@@ -271,6 +271,25 @@ function initializeMusic() {
         }
 
       );
+    client.riffy.on("nodeConnect", node => {
+  console.log(
+    `✅ LAVALINK NODE CONNECTED: ${node.name}`
+  );
+});
+
+client.riffy.on("nodeError", (node, error) => {
+  console.error(
+    `❌ LAVALINK NODE ERROR [${node?.name || "unknown"}]:`,
+    error?.message || error
+  );
+});
+
+client.riffy.on("nodeDisconnect", (node, reason) => {
+  console.error(
+    `⚠️ LAVALINK NODE DISCONNECTED [${node?.name || "unknown"}]:`,
+    reason
+  );
+});
 
     // ====================================
     // VOICE STATE UPDATE
@@ -360,7 +379,6 @@ function initializeMusic() {
   }
 
 }
-
 // ========================================
 // KHỞI TẠO MUSIC
 // ========================================
