@@ -354,13 +354,16 @@ function clearLive() {
 // ========================================
 
 module.exports = {
-
   MAX_WATCH_LINKS,
-
   createLive,
-
   getLive,
-
   getCurrentVideo,
-
- 
+  nextVideo,
+  addRandomMedia,
+  getRandomMediaList,
+  startRandomMode,
+  pauseLive,
+  resumeLive,
+  stopLive,
+  clearLive
+};
