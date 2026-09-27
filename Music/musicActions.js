@@ -1,4 +1,8 @@
-const { PermissionFlagsBits } = require("discord.js");
+const {
+    PermissionFlagsBits,
+    EmbedBuilder
+} = require("discord.js");
+
 const {
     getGuildMusicData,
     clearUpdateInterval
@@ -16,51 +20,48 @@ const YOUTUBE_URL_PATTERN =
 
 const PLAYER_CONNECT_TIMEOUT_MS = 12000;
 
-/* =========================
+/* =========================================================
    ERROR
-========================= */
+========================================================= */
 
 class MusicError extends Error {
     constructor(title, message) {
         super(message);
+
         this.name = "MusicError";
         this.title = title;
     }
 }
 
-/* =========================
+/* =========================================================
    EMBED
-========================= */
+========================================================= */
 
 function successEmbed(title, description) {
-    const {
-        EmbedBuilder
-    } = require("discord.js");
-
     return new EmbedBuilder()
         .setTitle(title)
         .setDescription(description)
         .setColor(0x57f287);
 }
 
-/* =========================
+/* =========================================================
    LAVALINK
-========================= */
+========================================================= */
 
 function getConnectedLavalinkNodes(client) {
-    if (!client.riffy?.nodeMap) {
+    if (!client?.riffy?.nodeMap) {
         return [];
     }
 
     return [
         ...client.riffy.nodeMap.values()
-    ].filter(
-        node => node.connected
-    );
+    ].filter(node => {
+        return node?.connected;
+    });
 }
 
 function assertRiffyAvailable(client) {
-    if (!client.riffy) {
+    if (!client?.riffy) {
         throw new MusicError(
             "Lavalink unavailable",
             "Music is unavailable because Lavalink has not been configured."
@@ -69,9 +70,10 @@ function assertRiffyAvailable(client) {
 }
 
 function assertLavalinkNodeAvailable(client) {
-    if (
-        !getConnectedLavalinkNodes(client).length
-    ) {
+    const nodes =
+        getConnectedLavalinkNodes(client);
+
+    if (!nodes.length) {
         throw new MusicError(
             "Lavalink unavailable",
             "No Lavalink nodes are connected."
@@ -79,9 +81,9 @@ function assertLavalinkNodeAvailable(client) {
     }
 }
 
-/* =========================
+/* =========================================================
    VOICE
-========================= */
+========================================================= */
 
 function requireVoiceChannel(member) {
     return Boolean(
@@ -98,10 +100,7 @@ function assertInVoice(member) {
     }
 }
 
-function canControlMusic(
-    member,
-    player
-) {
+function canControlMusic(member, player) {
     const memberChannel =
         member?.voice?.channel;
 
@@ -118,10 +117,7 @@ function canControlMusic(
     );
 }
 
-function assertCanControl(
-    member,
-    player
-) {
+function assertCanControl(member, player) {
     if (
         !canControlMusic(
             member,
@@ -135,9 +131,7 @@ function assertCanControl(
     }
 }
 
-function assertBotVoicePermissions(
-    channel
-) {
+function assertBotVoicePermissions(channel) {
     if (!channel) {
         throw new MusicError(
             "Voice channel unavailable",
@@ -145,10 +139,15 @@ function assertBotVoicePermissions(
         );
     }
 
+    const me =
+        channel.guild?.members?.me;
+
+    if (!me) {
+        return;
+    }
+
     const permissions =
-        channel.permissionsFor(
-            channel.client.user
-        );
+        channel.permissionsFor(me);
 
     if (!permissions) {
         return;
@@ -169,31 +168,41 @@ function assertBotVoicePermissions(
     }
 }
 
-/* =========================
+/* =========================================================
    PLAYER
-========================= */
+========================================================= */
 
-function getPlayer(
-    client,
-    guildId
-) {
+function getPlayer(client, guildId) {
     return (
-        client.riffy?.players?.get(
+        client?.riffy?.players?.get(
             guildId
         ) || null
     );
 }
 
-async function waitForPlayerConnection(
-    player
-) {
+async function waitForPlayerConnection(player) {
+    if (!player) {
+        throw new MusicError(
+            "Player unavailable",
+            "Music player was not created."
+        );
+    }
+
     if (player.connected) {
         return;
     }
 
     try {
-        await player.connection.resolve();
-    } catch {}
+        if (
+            player.connection &&
+            typeof player.connection.resolve ===
+                "function"
+        ) {
+            await player.connection.resolve();
+        }
+    } catch (_) {
+        // Continue and wait for connection event.
+    }
 
     if (player.connected) {
         return;
@@ -203,7 +212,9 @@ async function waitForPlayerConnection(
         let finished = false;
 
         const finish = () => {
-            if (finished) return;
+            if (finished) {
+                return;
+            }
 
             finished = true;
 
@@ -247,19 +258,27 @@ async function waitForPlayerConnection(
     }
 }
 
-async function startPlayback(
-    player
-) {
+async function startPlayback(player) {
     await waitForPlayerConnection(
         player
     );
 
+    if (
+        typeof player.play !==
+        "function"
+    ) {
+        throw new MusicError(
+            "Playback unavailable",
+            "The Lavalink player does not support playback."
+        );
+    }
+
     await player.play();
 }
 
-/* =========================
+/* =========================================================
    ENSURE PLAYER
-========================= */
+========================================================= */
 
 async function ensurePlayer(
     client,
@@ -267,9 +286,17 @@ async function ensurePlayer(
 ) {
     assertRiffyAvailable(client);
     assertLavalinkNodeAvailable(client);
+
     assertInVoice(
         interaction.member
     );
+
+    if (!interaction.guild) {
+        throw new MusicError(
+            "Server unavailable",
+            "This command can only be used inside a server."
+        );
+    }
 
     const guildId =
         interaction.guild.id;
@@ -285,32 +312,67 @@ async function ensurePlayer(
             guildId
         );
 
-    if (!player) {
-        player =
-            client.riffy.createConnection(
-                {
-                    guildId,
+    const voiceChannel =
+        interaction.member.voice.channel;
 
-                    voiceChannel:
-                        interaction.member
-                            .voice
-                            .channel
-                            .id,
+    assertBotVoicePermissions(
+        voiceChannel
+    );
 
-                    textChannel:
-                        interaction.channel.id,
+    if (
+        player &&
+        player.voiceChannel !==
+            voiceChannel.id
+    ) {
+        try {
+            if (
+                typeof player.destroy ===
+                "function"
+            ) {
+                player.destroy();
+            }
+        } catch (_) {}
 
-                    deaf: true
-                }
-            );
-
-        guildData.playerChannelId =
-            interaction.channel.id;
+        player = null;
     }
 
-    player.setVolume(
-        guildData.volume
-    );
+    if (!player) {
+        if (
+            typeof client.riffy
+                .createConnection !==
+            "function"
+        ) {
+            throw new MusicError(
+                "Player unavailable",
+                "Riffy could not create a music connection."
+            );
+        }
+
+        player =
+            client.riffy.createConnection({
+                guildId,
+
+                voiceChannel:
+                    voiceChannel.id,
+
+                textChannel:
+                    interaction.channel?.id,
+
+                deaf: true
+            });
+
+        guildData.playerChannelId =
+            interaction.channel?.id || null;
+    }
+
+    if (
+        typeof player.setVolume ===
+        "function"
+    ) {
+        player.setVolume(
+            guildData.volume
+        );
+    }
 
     return {
         player,
@@ -318,9 +380,9 @@ async function ensurePlayer(
     };
 }
 
-/* =========================
+/* =========================================================
    DUPLICATE
-========================= */
+========================================================= */
 
 function isDuplicateTrack(
     player,
@@ -334,31 +396,42 @@ function isDuplicateTrack(
     }
 
     if (
-        player.current?.info
-            ?.uri === uri
+        player?.current?.info?.uri ===
+        uri
     ) {
         return true;
     }
 
-    return player.queue.some(
-        existing =>
-            existing.info?.uri ===
-            uri
+    return Boolean(
+        player?.queue?.some(trackInQueue => {
+            return (
+                trackInQueue?.info?.uri ===
+                uri
+            );
+        })
     );
 }
 
-/* =========================
+/* =========================================================
    JOIN
-========================= */
+========================================================= */
 
 async function joinVoiceChannel(
     client,
     interaction
 ) {
     assertRiffyAvailable(client);
+
     assertInVoice(
         interaction.member
     );
+
+    if (!interaction.guild) {
+        throw new MusicError(
+            "Server unavailable",
+            "This command can only be used inside a server."
+        );
+    }
 
     const guildId =
         interaction.guild.id;
@@ -369,8 +442,7 @@ async function joinVoiceChannel(
         );
 
     const channel =
-        interaction.member
-            .voice.channel;
+        interaction.member.voice.channel;
 
     assertBotVoicePermissions(
         channel
@@ -388,35 +460,43 @@ async function joinVoiceChannel(
             channel.id
     ) {
         try {
-            player.destroy();
-        } catch {}
+            if (
+                typeof player.destroy ===
+                "function"
+            ) {
+                player.destroy();
+            }
+        } catch (_) {}
 
         player = null;
     }
 
     if (!player) {
         player =
-            client.riffy.createConnection(
-                {
-                    guildId,
+            client.riffy.createConnection({
+                guildId,
 
-                    voiceChannel:
-                        channel.id,
+                voiceChannel:
+                    channel.id,
 
-                    textChannel:
-                        interaction.channel.id,
+                textChannel:
+                    interaction.channel?.id,
 
-                    deaf: true
-                }
-            );
+                deaf: true
+            });
 
         guildData.playerChannelId =
-            interaction.channel.id;
+            interaction.channel?.id || null;
     }
 
-    player.setVolume(
-        guildData.volume
-    );
+    if (
+        typeof player.setVolume ===
+        "function"
+    ) {
+        player.setVolume(
+            guildData.volume
+        );
+    }
 
     return successEmbed(
         "Joined Voice Channel",
@@ -424,9 +504,9 @@ async function joinVoiceChannel(
     );
 }
 
-/* =========================
+/* =========================================================
    PLAY
-========================= */
+========================================================= */
 
 async function playQuery(
     client,
@@ -446,54 +526,67 @@ async function playQuery(
     query =
         query.trim();
 
-    /*
-     * Chỉ cho YouTube
-     */
     if (
         !YOUTUBE_URL_PATTERN.test(
             query
         )
     ) {
-        /*
-         * Tên bài hát:
-         * tìm trên YouTube
-         */
         query =
             `ytmsearch:${query}`;
     }
 
     const {
-        player,
-        guildData
+        player
     } = await ensurePlayer(
         client,
         interaction
     );
 
-    const result =
-        await client.riffy.resolve(
-            {
-                query,
-
-                requester:
-                    interaction.user
-            }
+    if (
+        typeof client.riffy.resolve !==
+        "function"
+    ) {
+        throw new MusicError(
+            "Search unavailable",
+            "Riffy could not search Lavalink."
         );
+    }
 
-    const {
-        loadType,
-        tracks,
-        playlistInfo
-    } = result;
+    const result =
+        await client.riffy.resolve({
+            query,
 
-    /*
-     * PLAYLIST
-     */
+            requester:
+                interaction.user
+        });
+
+    if (!result) {
+        throw new MusicError(
+            "No results",
+            "Lavalink returned no result."
+        );
+    }
+
+    const loadType =
+        String(
+            result.loadType || ""
+        ).toLowerCase();
+
+    const tracks =
+        Array.isArray(result.tracks)
+            ? result.tracks
+            : [];
+
+    const playlistInfo =
+        result.playlistInfo;
+
+    /* =====================================================
+       PLAYLIST
+    ===================================================== */
 
     if (
         loadType === "playlist" ||
-        loadType ===
-            "PLAYLIST_LOADED"
+        loadType === "playlist_loaded"
     ) {
         let added = 0;
         let skipped = 0;
@@ -501,6 +594,14 @@ async function playQuery(
         for (
             const track of tracks
         ) {
+            if (!track) {
+                continue;
+            }
+
+            if (!track.info) {
+                track.info = {};
+            }
+
             track.info.requester =
                 interaction.user;
 
@@ -523,7 +624,8 @@ async function playQuery(
 
         if (
             !player.playing &&
-            !player.paused
+            !player.paused &&
+            player.queue.length > 0
         ) {
             await startPlayback(
                 player
@@ -536,13 +638,12 @@ async function playQuery(
                     "Playlist Added",
 
                     `**${
-                        playlistInfo
-                            ?.name ||
+                        playlistInfo?.name ||
                         "Playlist"
                     }**\n` +
                     `Added ${added} track(s).` +
                     (
-                        skipped
+                        skipped > 0
                             ? ` Skipped ${skipped} duplicate(s).`
                             : ""
                     )
@@ -550,20 +651,18 @@ async function playQuery(
         };
     }
 
-    /*
-     * SINGLE TRACK
-     */
+    /* =====================================================
+       SINGLE TRACK / SEARCH
+    ===================================================== */
 
     if (
         loadType === "search" ||
         loadType === "track" ||
-        loadType ===
-            "SEARCH_RESULT" ||
-        loadType ===
-            "TRACK_LOADED"
+        loadType === "search_result" ||
+        loadType === "track_loaded"
     ) {
         const track =
-            tracks?.[0];
+            tracks[0];
 
         if (!track) {
             throw new MusicError(
@@ -580,8 +679,12 @@ async function playQuery(
         ) {
             throw new MusicError(
                 "Duplicate track",
-                `**${track.info.title}** is already playing or in the queue.`
+                `**${track.info?.title || "This track"}** is already playing or in the queue.`
             );
+        }
+
+        if (!track.info) {
+            track.info = {};
         }
 
         track.info.requester =
@@ -612,21 +715,21 @@ async function playQuery(
                         : "Track Added",
 
                     willPlayNow
-                        ? `**${track.info.title}**\n${track.info.author || "Unknown"}`
-                        : `**${track.info.title}**\n${track.info.author || "Unknown"}\nPosition: #${queuePosition}`
+                        ? `**${track.info.title || "Unknown"}**\n${track.info.author || "Unknown"}`
+                        : `**${track.info.title || "Unknown"}**\n${track.info.author || "Unknown"}\nPosition: #${queuePosition}`
                 )
         };
     }
 
     throw new MusicError(
         "No results",
-        `No results found. (${loadType})`
+        `No results found. (${result.loadType || "unknown"})`
     );
 }
 
-/* =========================
+/* =========================================================
    SKIP
-========================= */
+========================================================= */
 
 async function skipTrack(
     client,
@@ -651,19 +754,32 @@ async function skipTrack(
     );
 
     const title =
-        player.current.info
-            ?.title ||
+        player.current.info?.title ||
         "Unknown";
 
     if (
-        player.loop === "track"
+        player.loop === "track" &&
+        typeof player.setLoop ===
+            "function"
     ) {
-        player.setLoop(
-            "none"
+        player.setLoop("none");
+
+        getGuildMusicData(
+            interaction.guild.id
+        ).loop = "none";
+    }
+
+    if (
+        typeof player.stop !==
+        "function"
+    ) {
+        throw new MusicError(
+            "Skip unavailable",
+            "The player cannot skip the current track."
         );
     }
 
-    player.stop();
+    await player.stop();
 
     return successEmbed(
         "Skipped",
@@ -671,9 +787,9 @@ async function skipTrack(
     );
 }
 
-/* =========================
+/* =========================================================
    PAUSE
-========================= */
+========================================================= */
 
 async function applyPause(
     client,
@@ -692,14 +808,21 @@ async function applyPause(
         return false;
     }
 
+    if (
+        typeof player.pause !==
+        "function"
+    ) {
+        return false;
+    }
+
     player.pause(true);
 
     return true;
 }
 
-/* =========================
+/* =========================================================
    RESUME
-========================= */
+========================================================= */
 
 async function applyResume(
     client,
@@ -718,14 +841,21 @@ async function applyResume(
         return false;
     }
 
+    if (
+        typeof player.pause !==
+        "function"
+    ) {
+        return false;
+    }
+
     player.pause(false);
 
     return true;
 }
 
-/* =========================
+/* =========================================================
    PAUSE COMMAND
-========================= */
+========================================================= */
 
 async function pausePlayback(
     client,
@@ -756,10 +886,18 @@ async function pausePlayback(
         );
     }
 
-    await applyPause(
-        client,
-        interaction.guild.id
-    );
+    const changed =
+        await applyPause(
+            client,
+            interaction.guild.id
+        );
+
+    if (!changed) {
+        throw new MusicError(
+            "Cannot pause",
+            "Playback could not be paused."
+        );
+    }
 
     return successEmbed(
         "Paused",
@@ -767,9 +905,9 @@ async function pausePlayback(
     );
 }
 
-/* =========================
+/* =========================================================
    RESUME COMMAND
-========================= */
+========================================================= */
 
 async function resumePlayback(
     client,
@@ -800,10 +938,18 @@ async function resumePlayback(
         );
     }
 
-    await applyResume(
-        client,
-        interaction.guild.id
-    );
+    const changed =
+        await applyResume(
+            client,
+            interaction.guild.id
+        );
+
+    if (!changed) {
+        throw new MusicError(
+            "Cannot resume",
+            "Playback could not be resumed."
+        );
+    }
 
     return successEmbed(
         "Resumed",
@@ -811,54 +957,13 @@ async function resumePlayback(
     );
 }
 
-/* =========================
+/* =========================================================
    SHUFFLE
-========================= */
+========================================================= */
 
 async function shuffleQueue(
     client,
     interaction
-) {
-    const player =
-        getPlayer(
-            client,
-            interaction.guild.id
-        );
-
-    if (
-        !player?.queue?.length
-    ) {
-        throw new MusicError(
-            "Empty queue",
-            "The queue is empty."
-        );
-    }
-
-    assertCanControl(
-        interaction.member,
-        player
-    );
-
-    player.queue.shuffle();
-
-    getGuildMusicData(
-        interaction.guild.id
-    ).shuffle = true;
-
-    return successEmbed(
-        "Shuffled",
-        "The queue has been shuffled."
-    );
-}
-
-/* =========================
-   LOOP
-========================= */
-
-async function setLoopMode(
-    client,
-    interaction,
-    mode
 ) {
     const player =
         getPlayer(
@@ -877,6 +982,95 @@ async function setLoopMode(
         interaction.member,
         player
     );
+
+    if (
+        !player.queue ||
+        !player.queue.length
+    ) {
+        throw new MusicError(
+            "Empty queue",
+            "The queue is empty."
+        );
+    }
+
+    if (
+        typeof player.queue.shuffle !==
+        "function"
+    ) {
+        throw new MusicError(
+            "Shuffle unavailable",
+            "This Lavalink player does not support queue shuffle."
+        );
+    }
+
+    player.queue.shuffle();
+
+    const guildData =
+        getGuildMusicData(
+            interaction.guild.id
+        );
+
+    guildData.shuffle = true;
+
+    return successEmbed(
+        "Shuffled",
+        "The queue has been shuffled."
+    );
+}
+
+/* =========================================================
+   LOOP
+========================================================= */
+
+async function setLoopMode(
+    client,
+    interaction,
+    mode
+) {
+    const allowedModes = [
+        "none",
+        "track",
+        "queue"
+    ];
+
+    if (
+        !allowedModes.includes(
+            mode
+        )
+    ) {
+        throw new MusicError(
+            "Invalid loop mode",
+            "Invalid loop mode."
+        );
+    }
+
+    const player =
+        getPlayer(
+            client,
+            interaction.guild.id
+        );
+
+    if (!player) {
+        throw new MusicError(
+            "No player",
+            "No active music player."
+        );
+    }
+
+    assertCanControl(
+        interaction.member,
+        player
+    );
+
+    if (
+        typeof player.setLoop !==
+        "function"
+    ) {
+        throw new MusicError(
+            "Loop unavailable",
+            "This Lavalink player does not support loop mode."
+        );
+    }
 
     const guildData =
         getGuildMusicData(
@@ -898,9 +1092,7 @@ async function setLoopMode(
 
     return successEmbed(
         "Loop Updated",
-        `Loop mode set to **${
-            labels[mode] || mode
-        }**.`
+        `Loop mode set to **${labels[mode]}**.`
     );
 }
 
@@ -913,10 +1105,13 @@ async function toggleLoop(
             interaction.guild.id
         );
 
+    const current =
+        guildData.loop || "none";
+
     const next =
-        guildData.loop === "none"
+        current === "none"
             ? "track"
-            : guildData.loop === "track"
+            : current === "track"
                 ? "queue"
                 : "none";
 
@@ -927,9 +1122,9 @@ async function toggleLoop(
     );
 }
 
-/* =========================
+/* =========================================================
    VOLUME
-========================= */
+========================================================= */
 
 async function setVolume(
     client,
@@ -959,14 +1154,40 @@ async function setVolume(
             interaction.guild.id
         );
 
+    const numericVolume =
+        Number(volume);
+
+    if (
+        !Number.isFinite(
+            numericVolume
+        )
+    ) {
+        throw new MusicError(
+            "Invalid volume",
+            "Volume must be a number."
+        );
+    }
+
     guildData.volume =
         Math.max(
             0,
             Math.min(
                 100,
-                volume
+                Math.round(
+                    numericVolume
+                )
             )
         );
+
+    if (
+        typeof player.setVolume !==
+        "function"
+    ) {
+        throw new MusicError(
+            "Volume unavailable",
+            "This Lavalink player does not support volume control."
+        );
+    }
 
     player.setVolume(
         guildData.volume
@@ -996,8 +1217,325 @@ async function adjustVolume(
     );
 }
 
-/* =========================
-   QUEUE
-========================= */
+/* =========================================================
+   STOP
+========================================================= */
 
-function
+async function stopPlayback(
+    client,
+    interaction
+) {
+    const guildId =
+        interaction.guild.id;
+
+    const player =
+        getPlayer(
+            client,
+            guildId
+        );
+
+    if (!player) {
+        throw new MusicError(
+            "No player",
+            "No active music player."
+        );
+    }
+
+    assertCanControl(
+        interaction.member,
+        player
+    );
+
+    const guildData =
+        getGuildMusicData(
+            guildId
+        );
+
+    clearUpdateInterval(
+        guildData
+    );
+
+    guildData.queuePages.clear();
+
+    if (player.queue) {
+        try {
+            player.queue.clear();
+        } catch (_) {}
+    }
+
+    try {
+        if (
+            typeof player.stop ===
+            "function" &&
+            player.current
+        ) {
+            await player.stop();
+        }
+    } catch (_) {}
+
+    try {
+        if (
+            typeof player.destroy ===
+            "function"
+        ) {
+            await player.destroy();
+        }
+    } catch (_) {}
+
+    return successEmbed(
+        "Stopped",
+        "Music playback has been stopped."
+    );
+}
+
+/* =========================================================
+   LEAVE
+========================================================= */
+
+async function leaveVoiceChannel(
+    client,
+    interaction
+) {
+    const guildId =
+        interaction.guild.id;
+
+    const player =
+        getPlayer(
+            client,
+            guildId
+        );
+
+    if (!player) {
+        return successEmbed(
+            "Not Connected",
+            "The bot is not connected to a music voice channel."
+        );
+    }
+
+    assertCanControl(
+        interaction.member,
+        player
+    );
+
+    const guildData =
+        getGuildMusicData(
+            guildId
+        );
+
+    clearUpdateInterval(
+        guildData
+    );
+
+    guildData.queuePages.clear();
+
+    try {
+        if (
+            typeof player.destroy ===
+            "function"
+        ) {
+            await player.destroy();
+        }
+    } catch (_) {}
+
+    return successEmbed(
+        "Left Voice Channel",
+        "Disconnected from the voice channel."
+    );
+}
+
+/* =========================================================
+   QUEUE
+========================================================= */
+
+function getQueueTracks(player) {
+    if (!player?.queue) {
+        return [];
+    }
+
+    try {
+        return [
+            ...player.queue
+        ];
+    } catch (_) {
+        return [];
+    }
+}
+
+function buildQueueReply(
+    client,
+    guildId,
+    page = 0
+) {
+    const player =
+        getPlayer(
+            client,
+            guildId
+        );
+
+    if (!player) {
+        throw new MusicError(
+            "No player",
+            "No active music player."
+        );
+    }
+
+    const guildData =
+        getGuildMusicData(
+            guildId
+        );
+
+    const queue =
+        getQueueTracks(
+            player
+        );
+
+    const pageSize =
+        getQueuePageSize();
+
+    const totalPages =
+        Math.max(
+            1,
+            Math.ceil(
+                queue.length /
+                pageSize
+            )
+        );
+
+    const safePage =
+        Math.max(
+            0,
+            Math.min(
+                Number(page) || 0,
+                totalPages - 1
+            )
+        );
+
+    guildData.queuePages.forEach(
+        (value, userId) => {
+            if (
+                !Number.isInteger(
+                    value
+                )
+            ) {
+                guildData.queuePages.set(
+                    userId,
+                    0
+                );
+            }
+        }
+    );
+
+    const embed =
+        buildQueueEmbed(
+            queue,
+            player.current,
+            safePage
+        );
+
+    const components = [];
+
+    if (totalPages > 1) {
+        components.push(
+            buildQueuePaginationRow(
+                safePage,
+                totalPages
+            )
+        );
+    }
+
+    return {
+        embeds: [
+            embed
+        ],
+        components
+    };
+}
+
+/* =========================================================
+   NOW PLAYING
+========================================================= */
+
+function buildNowPlayingReply(
+    client,
+    guildId
+) {
+    const player =
+        getPlayer(
+            client,
+            guildId
+        );
+
+    if (!player) {
+        throw new MusicError(
+            "No player",
+            "No active music player."
+        );
+    }
+
+    const guildData =
+        getGuildMusicData(
+            guildId
+        );
+
+    const embed =
+        buildNowPlayingEmbed(
+            player,
+            player.current,
+            guildData
+        );
+
+    return {
+        embeds: [
+            embed
+        ]
+    };
+}
+
+/* =========================================================
+   EXPORTS
+========================================================= */
+
+module.exports = {
+    MusicError,
+
+    getConnectedLavalinkNodes,
+    assertRiffyAvailable,
+    assertLavalinkNodeAvailable,
+
+    requireVoiceChannel,
+    assertInVoice,
+    canControlMusic,
+    assertCanControl,
+    assertBotVoicePermissions,
+
+    getPlayer,
+
+    ensurePlayer,
+    joinVoiceChannel,
+
+    playQuery,
+
+    skipTrack,
+
+    applyPause,
+    applyResume,
+
+    pausePlayback,
+    resumePlayback,
+
+    shuffleQueue,
+
+    setLoopMode,
+    toggleLoop,
+
+    setVolume,
+    adjustVolume,
+
+    stopPlayback,
+    leaveVoiceChannel,
+
+    buildQueueReply,
+    buildNowPlayingReply,
+
+    startPlayback
+};
