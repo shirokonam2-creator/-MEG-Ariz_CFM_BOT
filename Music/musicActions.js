@@ -1491,51 +1491,32 @@ function buildNowPlayingReply(
     };
 }
 
-/* =========================================================
-   EXPORTS
-========================================================= */
+// ========================================
+// EXPORT
+// ========================================
 
 module.exports = {
-    MusicError,
+  MAX_WATCH_LINKS,
 
-    getConnectedLavalinkNodes,
-    assertRiffyAvailable,
-    assertLavalinkNodeAvailable,
+  createLive,
 
-    requireVoiceChannel,
-    assertInVoice,
-    canControlMusic,
-    assertCanControl,
-    assertBotVoicePermissions,
+  getLive,
 
-    getPlayer,
+  getCurrentVideo,
 
-    ensurePlayer,
-    joinVoiceChannel,
+  nextVideo,
 
-    playQuery,
+  addRandomMedia,
 
-    skipTrack,
+  getRandomMediaList,
 
-    applyPause,
-    applyResume,
+  startRandomMode,
 
-    pausePlayback,
-    resumePlayback,
+  pauseLive,
 
-    shuffleQueue,
+  resumeLive,
 
-    setLoopMode,
-    toggleLoop,
+  stopLive,
 
-    setVolume,
-    adjustVolume,
-
-    stopPlayback,
-    leaveVoiceChannel,
-
-    buildQueueReply,
-    buildNowPlayingReply,
-
-    startPlayback
+  clearLive
 };
