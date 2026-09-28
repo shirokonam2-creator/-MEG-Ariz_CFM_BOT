@@ -1318,8 +1318,6 @@ if (interaction.commandName === "play") {
 
         }
 
-      }
-
     } catch (error) {
 
       console.error(
