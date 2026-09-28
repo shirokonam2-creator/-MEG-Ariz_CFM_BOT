@@ -628,82 +628,74 @@ client.on(
         // /PLAY
         // =================================
 
-        if (
-          interaction.commandName === "play"
-        ) {
+        if (interaction.commandName === "play") {
 
-          const query =
-            interaction.options.getString(
-              "query"
+          await interaction.deferReply();
+
+          try {
+
+            const query =
+              interaction.options.getString(
+                "query",
+                true
+              );
+
+            const result =
+              await playQuery({
+                client,
+                interaction,
+                query
+              });
+
+            await interaction.editReply(result);
+
+          } catch (error) {
+
+            console.error(
+              "❌ /play error:"
             );
 
-          if (!query) {
+            console.error(error);
 
-            await interaction.reply({
+            try {
 
-              content:
-// =================================
-// /PLAY
-// =================================
+              if (
+                interaction.deferred ||
+                interaction.replied
+              ) {
 
-if (interaction.commandName === "play") {
-  await interaction.deferReply();
+                await interaction.editReply({
+                  content:
+                    `❌ Không thể phát nhạc.\n` +
+                    `\`${error.message || "Lỗi không xác định"}\``
+                });
 
-  try {
-    const query =
-      interaction.options.getString("query", true);
+              } else {
 
-    const result = await playQuery({
-      client,
-      interaction,
-      query
-    });
+                await interaction.reply({
+                  content:
+                    `❌ Không thể phát nhạc.\n` +
+                    `\`${error.message || "Lỗi không xác định"}\``,
+                  ephemeral: true
+                });
 
-    await interaction.editReply(result);
+              }
 
-  } catch (error) {
+            } catch (replyError) {
 
-    console.error("❌ /play error:");
-    console.error(error);
+              console.error(
+                "❌ Không thể gửi lỗi /play:"
+              );
 
-    try {
+              console.error(replyError);
 
-      if (
-        interaction.deferred ||
-        interaction.replied
-      ) {
-
-        await interaction.editReply({
-          content:
-            `❌ Không thể phát nhạc.\n` +
-            `\`${error.message || "Lỗi không xác định"}\``
-        });
-
-      } else {
-
-        await interaction.reply({
-          content:
-            `❌ Không thể phát nhạc.\n` +
-            `\`${error.message || "Lỗi không xác định"}\``,
-          ephemeral: true
-        });
-
-      }
-
-    } catch (replyError) {
-
-      console.error(
-        "❌ Không thể gửi lỗi /play:"
-      );
-
-      console.error(replyError);
-
-    }
-
-  }
-
-  return;
             }
+
+          }
+
+          return;
+
+        }
 
         // =================================
         // /WATCH
