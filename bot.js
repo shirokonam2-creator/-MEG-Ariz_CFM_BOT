@@ -718,74 +718,29 @@ client.on(
             return;
 
           }
+if (interaction.commandName === "play") {
+  await interaction.deferReply();
 
-          const voiceChannel =
-            member.voice.channel;
+  try {
+    const query = interaction.options.getString("query", true);
 
-          const permissions =
-            voiceChannel.permissionsFor(
-              interaction.client.user
-            );
+    const result = await playQuery({
+      client,
+      interaction,
+      query
+    });
 
-          if (
-            !permissions ||
-            !permissions.has("Connect") ||
-            !permissions.has("Speak")
-          ) {
+    await interaction.editReply(result);
+  } catch (error) {
+    console.error("❌ /play error:", error);
 
-            await interaction.reply({
+    await interaction.editReply({
+      content: `❌ Không thể phát nhạc.\n\`${error.message || "Lỗi không xác định"}\``
+    });
+  }
 
-              content:
-                "❌ Bot cần quyền **Connect** và **Speak** trong phòng thoại.",
-
-              ephemeral: true
-
-            });
-
-            return;
-
-          }
-
-          await interaction.deferReply();
-
-          try {
-
-            const result =
-              await playQuery(
-                client,
-                interaction,
-                query
-              );
-
-            await interaction.editReply({
-
-              content:
-                result?.message ||
-                `🎵 Đã thêm **${query}** vào hàng đợi.`
-
-            });
-
-          } catch (error) {
-
-            console.error(
-              "❌ /play error:"
-            );
-
-            console.error(error);
-
-            await interaction.editReply({
-
-              content:
-                `❌ Không thể phát nhạc.\n\n` +
-                `\`${error.message || "Lỗi không xác định"}\``
-
-            });
-
-          }
-
-          return;
-
-        }
+  return;
+    }
 
         // =================================
         // /WATCH
