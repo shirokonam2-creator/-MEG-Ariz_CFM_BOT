@@ -465,36 +465,83 @@ const commands = [
 
     .toJSON(),
 
-  // ======================================
-  // /play
-  // ======================================
+// =================================
+// /PLAY
+// =================================
 
-  new SlashCommandBuilder()
+if (
+  interaction.commandName === "play"
+) {
 
-    .setName("play")
+  await interaction.deferReply();
 
-    .setDescription(
-      "Phát nhạc từ YouTube"
-    )
+  try {
 
-    .addStringOption(option =>
+    const query =
+      interaction.options.getString(
+        "query",
+        true
+      );
 
-      option
+    const result =
+      await playQuery({
+        client,
+        interaction,
+        query
+      });
 
-        .setName("query")
+    await interaction.editReply(
+      result
+    );
 
-        .setDescription(
-          "Link YouTube hoặc tên bài hát"
-        )
+  } catch (error) {
 
-        .setRequired(true)
+    console.error(
+      "❌ /play error:"
+    );
 
-    )
+    console.error(error);
 
-    .toJSON()
+    try {
 
-];
+      if (
+        interaction.deferred ||
+        interaction.replied
+      ) {
 
+        await interaction.editReply({
+          content:
+            `❌ Không thể phát nhạc.\n` +
+            `\`${error.message || "Lỗi không xác định"}\``
+        });
+
+      } else {
+
+        await interaction.reply({
+          content:
+            `❌ Không thể phát nhạc.\n` +
+            `\`${error.message || "Lỗi không xác định"}\``,
+          ephemeral: true
+        });
+
+      }
+
+    } catch (replyError) {
+
+      console.error(
+        "❌ Không thể gửi lỗi /play:"
+      );
+
+      console.error(
+        replyError
+      );
+
+    }
+
+  }
+
+  return;
+  }
 // ========================================
 // ĐĂNG KÝ COMMAND
 // ========================================
