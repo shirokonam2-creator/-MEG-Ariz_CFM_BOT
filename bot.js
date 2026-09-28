@@ -28,10 +28,6 @@ const {
   joinVoiceChannel
 } = require("@discordjs/voice");
 
-// ========================================
-// WATCH SYSTEM
-// ========================================
-
 const {
   startWatchLive,
   getWatchLive,
@@ -49,39 +45,21 @@ const {
   getWatchRoom
 } = require("./watchRoom");
 
-// ========================================
-// MUSIC BUTTONS
-// ========================================
-
 const {
   handleMusicButton
 } = require("./Music/musicButtons");
-
-// ========================================
-// MUSIC ACTIONS
-// ========================================
 
 const {
   playQuery
 } = require("./Music/musicActions");
 
-// ========================================
-// GIỚI HẠN VIDEO
-// ========================================
-
 const MAX_VIDEOS = 3;
-
-// ========================================
-// LAVALINK CONFIG
-// ========================================
 
 const LAVALINK_HOST =
   process.env.LAVALINK_HOST || "localhost";
 
 const LAVALINK_PORT =
-  Number(
-    process.env.LAVALINK_PORT || 2333
-  );
+  Number(process.env.LAVALINK_PORT || 2333);
 
 const LAVALINK_PASSWORD =
   process.env.LAVALINK_PASSWORD ||
@@ -93,16 +71,11 @@ const LAVALINK_SECURE =
   ).toLowerCase() === "true";
 
 const LAVALINK_NAME =
-  process.env.LAVALINK_NAME ||
-  "Main";
+  process.env.LAVALINK_NAME || "Main";
 
 const LAVALINK_SEARCH_PLATFORM =
   process.env.LAVALINK_SEARCH_PLATFORM ||
   "ytmsearch";
-
-// ========================================
-// KIỂM TRA ENV
-// ========================================
 
 if (!process.env.DISCORD_TOKEN) {
   console.error("❌ Thiếu DISCORD_TOKEN!");
@@ -118,10 +91,6 @@ if (!process.env.GUILD_ID) {
   console.error("❌ Thiếu GUILD_ID!");
   process.exit(1);
 }
-
-// ========================================
-// RENDER HTTP SERVER
-// ========================================
 
 const PORT =
   process.env.PORT || 10000;
@@ -163,26 +132,15 @@ server.listen(
   }
 );
 
-// ========================================
-// DISCORD CLIENT
-// ========================================
-
 const client =
   new Client({
 
     intents: [
-
       GatewayIntentBits.Guilds,
-
       GatewayIntentBits.GuildVoiceStates
-
     ]
 
   });
-
-// ========================================
-// KHỞI TẠO RIFFY / LAVALINK
-// ========================================
 
 function initializeMusic() {
 
@@ -271,29 +229,41 @@ function initializeMusic() {
         }
 
       );
-    client.riffy.on("nodeConnect", node => {
-  console.log(
-    `✅ LAVALINK NODE CONNECTED: ${node.name}`
-  );
-});
 
-client.riffy.on("nodeError", (node, error) => {
-  console.error(
-    `❌ LAVALINK NODE ERROR [${node?.name || "unknown"}]:`,
-    error?.message || error
-  );
-});
+    client.riffy.on(
+      "nodeConnect",
+      node => {
 
-client.riffy.on("nodeDisconnect", (node, reason) => {
-  console.error(
-    `⚠️ LAVALINK NODE DISCONNECTED [${node?.name || "unknown"}]:`,
-    reason
-  );
-});
+        console.log(
+          `✅ LAVALINK NODE CONNECTED: ${node.name}`
+        );
 
-    // ====================================
-    // VOICE STATE UPDATE
-    // ====================================
+      }
+    );
+
+    client.riffy.on(
+      "nodeError",
+      (node, error) => {
+
+        console.error(
+          `❌ LAVALINK NODE ERROR [${node?.name || "unknown"}]:`,
+          error?.message || error
+        );
+
+      }
+    );
+
+    client.riffy.on(
+      "nodeDisconnect",
+      (node, reason) => {
+
+        console.error(
+          `⚠️ LAVALINK NODE DISCONNECTED [${node?.name || "unknown"}]:`,
+          reason
+        );
+
+      }
+    );
 
     client.on(
       "raw",
@@ -311,7 +281,6 @@ client.riffy.on("nodeDisconnect", (node, reason) => {
         ) {
 
           return;
-
         }
 
         if (
@@ -321,18 +290,12 @@ client.riffy.on("nodeDisconnect", (node, reason) => {
         ) {
 
           client.riffy
-            .updateVoiceState(
-              packet
-            );
+            .updateVoiceState(packet);
 
         }
 
       }
     );
-
-    // ====================================
-    // PLAYER ERROR
-    // ====================================
 
     client.riffy.on(
       "playerError",
@@ -345,10 +308,6 @@ client.riffy.on("nodeDisconnect", (node, reason) => {
 
       }
     );
-
-    // ====================================
-    // PLAYER TRACK ERROR
-    // ====================================
 
     client.riffy.on(
       "trackError",
@@ -379,21 +338,10 @@ client.riffy.on("nodeDisconnect", (node, reason) => {
   }
 
 }
-// ========================================
-// KHỞI TẠO MUSIC
-// ========================================
 
 initializeMusic();
 
-// ========================================
-// SLASH COMMANDS
-// ========================================
-
 const commands = [
-
-  // ======================================
-  // /watch
-  // ======================================
 
   new SlashCommandBuilder()
 
@@ -451,10 +399,6 @@ const commands = [
 
     .toJSON(),
 
-  // ======================================
-  // /join
-  // ======================================
-
   new SlashCommandBuilder()
 
     .setName("join")
@@ -465,9 +409,31 @@ const commands = [
 
     .toJSON(),
 
-// ========================================
-// ĐĂNG KÝ COMMAND
-// ========================================
+  new SlashCommandBuilder()
+
+    .setName("play")
+
+    .setDescription(
+      "Phát nhạc trong phòng thoại"
+    )
+
+    .addStringOption(option =>
+
+      option
+
+        .setName("query")
+
+        .setDescription(
+          "Tên bài hát hoặc link"
+        )
+
+        .setRequired(true)
+
+    )
+
+    .toJSON()
+
+];
 
 async function registerCommands() {
 
@@ -513,10 +479,6 @@ async function registerCommands() {
 
 }
 
-// ========================================
-// READY
-// ========================================
-
 client.once(
   Events.ClientReady,
   readyClient => {
@@ -528,10 +490,6 @@ client.once(
     console.log(
       "🎬 [MEG]Ariz_CFM_BOT đang hoạt động!"
     );
-
-    // ====================================
-    // KHỞI TẠO RIFFY SAU KHI LOGIN
-    // ====================================
 
     if (
       client.riffy &&
@@ -563,19 +521,11 @@ client.once(
   }
 );
 
-// ========================================
-// INTERACTION
-// ========================================
-
 client.on(
   Events.InteractionCreate,
   async interaction => {
 
     try {
-
-      // ==================================
-      // MUSIC BUTTON
-      // ==================================
 
       if (
         interaction.isButton()
@@ -616,19 +566,17 @@ client.on(
 
       }
 
-      // ==================================
-      // SLASH COMMAND
-      // ==================================
-
       if (
         interaction.isChatInputCommand()
       ) {
 
-        // =================================
+        // ================================
         // /PLAY
-        // =================================
+        // ================================
 
-        if (interaction.commandName === "play") {
+        if (
+          interaction.commandName === "play"
+        ) {
 
           await interaction.deferReply();
 
@@ -647,7 +595,9 @@ client.on(
                 query
               });
 
-            await interaction.editReply(result);
+            await interaction.editReply(
+              result
+            );
 
           } catch (error) {
 
@@ -665,18 +615,23 @@ client.on(
               ) {
 
                 await interaction.editReply({
+
                   content:
                     `❌ Không thể phát nhạc.\n` +
                     `\`${error.message || "Lỗi không xác định"}\``
+
                 });
 
               } else {
 
                 await interaction.reply({
+
                   content:
                     `❌ Không thể phát nhạc.\n` +
                     `\`${error.message || "Lỗi không xác định"}\``,
+
                   ephemeral: true
+
                 });
 
               }
@@ -687,7 +642,9 @@ client.on(
                 "❌ Không thể gửi lỗi /play:"
               );
 
-              console.error(replyError);
+              console.error(
+                replyError
+              );
 
             }
 
@@ -697,9 +654,9 @@ client.on(
 
         }
 
-        // =================================
+        // ================================
         // /WATCH
-        // =================================
+        // ================================
 
         if (
           interaction.commandName === "watch"
@@ -735,10 +692,6 @@ client.on(
 
           }
 
-          // --------------------------------
-          // Tách dữ liệu
-          // --------------------------------
-
           const parts =
             input.trim().split(/\s+/);
 
@@ -768,10 +721,6 @@ client.on(
 
           }
 
-          // --------------------------------
-          // Kiểm tra link
-          // --------------------------------
-
           if (
             links.length === 0
           ) {
@@ -788,10 +737,6 @@ client.on(
             return;
 
           }
-
-          // --------------------------------
-          // Giới hạn video
-          // --------------------------------
 
           if (
             links.length > MAX_VIDEOS
@@ -810,18 +755,10 @@ client.on(
 
           }
 
-          // --------------------------------
-          // Tên phim
-          // --------------------------------
-
           const videoName =
             names.length > 0
               ? names.join(" ")
               : "Video";
-
-          // --------------------------------
-          // Tạo Live
-          // --------------------------------
 
           startWatchLive({
 
@@ -832,26 +769,14 @@ client.on(
 
           });
 
-          // --------------------------------
-          // Video đầu tiên
-          // --------------------------------
-
           const currentVideo =
             getWatchCurrentVideo();
-
-          // --------------------------------
-          // Cinema Room
-          // --------------------------------
 
           createWatchRoom(
             links[0],
             owner,
             voiceChannel
           );
-
-          // --------------------------------
-          // Embed
-          // --------------------------------
 
           const embed =
             new EmbedBuilder()
@@ -881,55 +806,63 @@ client.on(
 
               .setTimestamp();
 
-          // --------------------------------
-          // Nút Live
-          // --------------------------------
-
           const row =
             new ActionRowBuilder()
 
               .addComponents(
 
                 new ButtonBuilder()
+
                   .setCustomId(
                     "live_pause"
                   )
+
                   .setLabel(
                     "⏸️ Tạm dừng"
                   )
+
                   .setStyle(
                     ButtonStyle.Secondary
                   ),
 
                 new ButtonBuilder()
+
                   .setCustomId(
                     "live_resume"
                   )
+
                   .setLabel(
                     "▶️ Tiếp tục"
                   )
+
                   .setStyle(
                     ButtonStyle.Success
                   ),
 
                 new ButtonBuilder()
+
                   .setCustomId(
                     "live_next"
                   )
+
                   .setLabel(
                     "⏭️ Tiếp"
                   )
+
                   .setStyle(
                     ButtonStyle.Primary
                   ),
 
                 new ButtonBuilder()
+
                   .setCustomId(
                     "live_stop"
                   )
+
                   .setLabel(
                     "⏹️ Dừng"
                   )
+
                   .setStyle(
                     ButtonStyle.Danger
                   )
@@ -958,9 +891,9 @@ client.on(
 
         }
 
-        // =================================
+        // ================================
         // /JOIN
-        // =================================
+        // ================================
 
         if (
           interaction.commandName === "join"
@@ -1074,17 +1007,13 @@ client.on(
 
       }
 
-      // ==================================
+      // ================================
       // LIVE BUTTONS
-      // ==================================
+      // ================================
 
       if (
         interaction.isButton()
       ) {
-
-        // --------------------------------
-        // PAUSE
-        // --------------------------------
 
         if (
           interaction.customId ===
@@ -1109,10 +1038,6 @@ client.on(
 
         }
 
-        // --------------------------------
-        // RESUME
-        // --------------------------------
-
         if (
           interaction.customId ===
           "live_resume"
@@ -1135,10 +1060,6 @@ client.on(
           return;
 
         }
-
-        // --------------------------------
-        // NEXT
-        // --------------------------------
 
         if (
           interaction.customId ===
@@ -1177,10 +1098,6 @@ client.on(
 
         }
 
-        // --------------------------------
-        // STOP
-        // --------------------------------
-
         if (
           interaction.customId ===
           "live_stop"
@@ -1204,10 +1121,6 @@ client.on(
 
         }
 
-        // --------------------------------
-        // WATCH INFO
-        // --------------------------------
-
         if (
           interaction.customId ===
           "watch_info"
@@ -1222,7 +1135,11 @@ client.on(
           const current =
             getWatchCurrentVideo();
 
-          if (!room || !live || !current) {
+          if (
+            !room ||
+            !live ||
+            !current
+          ) {
 
             await interaction.reply({
 
@@ -1273,6 +1190,8 @@ client.on(
 
         }
 
+      }
+
     } catch (error) {
 
       console.error(
@@ -1306,10 +1225,6 @@ client.on(
   }
 );
 
-// ========================================
-// KHỞI ĐỘNG BOT
-// ========================================
-
 async function startBot() {
 
   await registerCommands();
@@ -1338,12 +1253,8 @@ async function startBot() {
 
 }
 
-// ========================================
-// START
-// ========================================
-
 console.log(
   "🚀 Đang khởi động [MEG]Ariz_CFM_BOT..."
 );
 
-startBot();
+startBot(); 
