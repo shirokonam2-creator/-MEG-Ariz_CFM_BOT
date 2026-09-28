@@ -642,57 +642,16 @@ client.on(
             await interaction.reply({
 
               content:
-                "❌ Bạn chưa nhập tên bài hát hoặc link YouTube.",
+// =================================
+// /PLAY
+// =================================
 
-              ephemeral: true
-
-            });
-
-            return;
-
-          }
-
-          if (!client.riffy) {
-
-            await interaction.reply({
-
-              content:
-                "❌ Music system chưa được kết nối với Lavalink.",
-
-              ephemeral: true
-
-            });
-
-            return;
-
-          }
-
-          const member =
-            interaction.member;
-
-          if (
-            !member ||
-            !member.voice ||
-            !member.voice.channel
-          ) {
-
-            await interaction.reply({
-
-              content:
-                "❌ Bạn phải vào phòng thoại trước khi dùng `/play`.",
-
-              ephemeral: true
-
-            });
-
-            return;
-
-          }
 if (interaction.commandName === "play") {
   await interaction.deferReply();
 
   try {
-    const query = interaction.options.getString("query", true);
+    const query =
+      interaction.options.getString("query", true);
 
     const result = await playQuery({
       client,
@@ -701,16 +660,50 @@ if (interaction.commandName === "play") {
     });
 
     await interaction.editReply(result);
-  } catch (error) {
-    console.error("❌ /play error:", error);
 
-    await interaction.editReply({
-      content: `❌ Không thể phát nhạc.\n\`${error.message || "Lỗi không xác định"}\``
-    });
+  } catch (error) {
+
+    console.error("❌ /play error:");
+    console.error(error);
+
+    try {
+
+      if (
+        interaction.deferred ||
+        interaction.replied
+      ) {
+
+        await interaction.editReply({
+          content:
+            `❌ Không thể phát nhạc.\n` +
+            `\`${error.message || "Lỗi không xác định"}\``
+        });
+
+      } else {
+
+        await interaction.reply({
+          content:
+            `❌ Không thể phát nhạc.\n` +
+            `\`${error.message || "Lỗi không xác định"}\``,
+          ephemeral: true
+        });
+
+      }
+
+    } catch (replyError) {
+
+      console.error(
+        "❌ Không thể gửi lỗi /play:"
+      );
+
+      console.error(replyError);
+
+    }
+
   }
 
   return;
-    }
+            }
 
         // =================================
         // /WATCH
