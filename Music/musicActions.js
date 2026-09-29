@@ -177,5 +177,3 @@ module.exports = {
   buildNowPlayingReply,
   startPlayback
 };
-
-                                            } 
