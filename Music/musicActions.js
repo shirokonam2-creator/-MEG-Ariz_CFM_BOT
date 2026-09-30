@@ -116,7 +116,7 @@ async function playQuery({ client, interaction, query }) {
     // Thêm bài vào cuối queue
     player.queue.add(track);
 
-  return {
+    return {
     content:
       `❌ Không thể phát kết quả này.\n` +
       `Loại kết quả: \`${loadType || "unknown"}\``
