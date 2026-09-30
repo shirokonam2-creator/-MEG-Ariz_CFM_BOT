@@ -17,16 +17,13 @@ const {
 } = require("discord.js");
 
 const {
-  GatewayDispatchEvents
-} = require("discord.js");
-
-const {
-  Riffy
-} = require("riffy");
-
-const {
   joinVoiceChannel
 } = require("@discordjs/voice");
+
+
+// ========================================
+// WATCH / CINEMA
+// ========================================
 
 const {
   startWatchLive,
@@ -45,6 +42,11 @@ const {
   getWatchRoom
 } = require("./watchRoom");
 
+
+// ========================================
+// MUSIC MỚI
+// ========================================
+
 const {
   handleMusicButton
 } = require("./Music/musicButtons");
@@ -53,44 +55,49 @@ const {
   playQuery
 } = require("./Music/musicActions");
 
+
+// ========================================
+// CONFIG
+// ========================================
+
 const MAX_VIDEOS = 3;
 
-const LAVALINK_HOST =
-  process.env.LAVALINK_HOST || "localhost";
 
-const LAVALINK_PORT =
-  Number(process.env.LAVALINK_PORT || 2333);
-
-const LAVALINK_PASSWORD =
-  process.env.LAVALINK_PASSWORD ||
-  "youshallnotpass";
-
-const LAVALINK_SECURE =
-  String(
-    process.env.LAVALINK_SECURE || "false"
-  ).toLowerCase() === "true";
-
-const LAVALINK_NAME =
-  process.env.LAVALINK_NAME || "Main";
-
-const LAVALINK_SEARCH_PLATFORM =
-  process.env.LAVALINK_SEARCH_PLATFORM ||
-  "ytmsearch";
+// ========================================
+// KIỂM TRA ENV
+// ========================================
 
 if (!process.env.DISCORD_TOKEN) {
-  console.error("❌ Thiếu DISCORD_TOKEN!");
+
+  console.error(
+    "❌ Thiếu DISCORD_TOKEN!"
+  );
+
   process.exit(1);
 }
 
 if (!process.env.CLIENT_ID) {
-  console.error("❌ Thiếu CLIENT_ID!");
+
+  console.error(
+    "❌ Thiếu CLIENT_ID!"
+  );
+
   process.exit(1);
 }
 
 if (!process.env.GUILD_ID) {
-  console.error("❌ Thiếu GUILD_ID!");
+
+  console.error(
+    "❌ Thiếu GUILD_ID!"
+  );
+
   process.exit(1);
 }
+
+
+// ========================================
+// HTTP SERVER
+// ========================================
 
 const PORT =
   process.env.PORT || 10000;
@@ -118,6 +125,7 @@ const server =
     });
 
     res.end("Not Found");
+
   });
 
 server.listen(
@@ -132,6 +140,11 @@ server.listen(
   }
 );
 
+
+// ========================================
+// DISCORD CLIENT
+// ========================================
+
 const client =
   new Client({
 
@@ -142,206 +155,16 @@ const client =
 
   });
 
-function initializeMusic() {
 
-  try {
-
-    client.riffy =
-      new Riffy(
-
-        client,
-
-        [
-          {
-            host:
-              LAVALINK_HOST,
-
-            port:
-              LAVALINK_PORT,
-
-            password:
-              LAVALINK_PASSWORD,
-
-            secure:
-              LAVALINK_SECURE,
-
-            name:
-              LAVALINK_NAME
-          }
-        ],
-
-        {
-
-          send: payload => {
-
-            const guildId =
-              payload?.d?.guild_id;
-
-            if (!guildId) {
-              return;
-            }
-
-            const guild =
-              client.guilds.cache.get(
-                guildId
-              );
-
-            if (
-              guild &&
-              guild.shard
-            ) {
-
-              guild.shard.send(
-                payload
-              );
-
-              return;
-            }
-
-            const shardCount =
-              client.ws.shards.size || 1;
-
-            const shardId =
-              Number(
-                (
-                  BigInt(guildId) >>
-                  22n
-                ) %
-                BigInt(shardCount)
-              );
-
-            client.ws.shards
-              .get(shardId)
-              ?.send(payload);
-
-          },
-
-          defaultSearchPlatform:
-            LAVALINK_SEARCH_PLATFORM,
-
-          restVersion:
-            "v4",
-
-          bypassChecks: {
-            nodeFetchInfo: true
-          }
-
-        }
-
-      );
-
-    client.riffy.on(
-      "nodeConnect",
-      node => {
-
-        console.log(
-          `✅ LAVALINK NODE CONNECTED: ${node.name}`
-        );
-
-      }
-    );
-
-    client.riffy.on(
-      "nodeError",
-      (node, error) => {
-
-        console.error(
-          `❌ LAVALINK NODE ERROR [${node?.name || "unknown"}]:`,
-          error?.message || error
-        );
-
-      }
-    );
-
-    client.riffy.on(
-      "nodeDisconnect",
-      (node, reason) => {
-
-        console.error(
-          `⚠️ LAVALINK NODE DISCONNECTED [${node?.name || "unknown"}]:`,
-          reason
-        );
-
-      }
-    );
-
-    client.on(
-      "raw",
-      packet => {
-
-        if (
-          ![
-            GatewayDispatchEvents
-              .VoiceStateUpdate,
-
-            GatewayDispatchEvents
-              .VoiceServerUpdate
-
-          ].includes(packet.t)
-        ) {
-
-          return;
-        }
-
-        if (
-          client.riffy &&
-          typeof client.riffy
-            .updateVoiceState === "function"
-        ) {
-
-          client.riffy
-            .updateVoiceState(packet);
-
-        }
-
-      }
-    );
-
-    client.riffy.on(
-      "playerError",
-      (player, error) => {
-
-        console.error(
-          `❌ Music player error [${player.guildId}]:`,
-          error
-        );
-
-      }
-    );
-
-    client.riffy.on(
-      "trackError",
-      (player, track, error) => {
-
-        console.error(
-          `❌ Track error [${player.guildId}]:`,
-          error
-        );
-
-      }
-    );
-
-    console.log(
-      "🎵 Riffy Music system đã được khởi tạo."
-    );
-
-  } catch (error) {
-
-    console.error(
-      "❌ Không thể khởi tạo Riffy:"
-    );
-
-    console.error(error);
-
-    client.riffy = null;
-
-  }
-
-}
-
-initializeMusic();
+// ========================================
+// SLASH COMMANDS
+// ========================================
 
 const commands = [
+
+  // ======================================
+  // /WATCH
+  // ======================================
 
   new SlashCommandBuilder()
 
@@ -399,6 +222,11 @@ const commands = [
 
     .toJSON(),
 
+
+  // ======================================
+  // /JOIN
+  // ======================================
+
   new SlashCommandBuilder()
 
     .setName("join")
@@ -408,6 +236,11 @@ const commands = [
     )
 
     .toJSON(),
+
+
+  // ======================================
+  // /PLAY
+  // ======================================
 
   new SlashCommandBuilder()
 
@@ -434,6 +267,11 @@ const commands = [
     .toJSON()
 
 ];
+
+
+// ========================================
+// ĐĂNG KÝ COMMAND
+// ========================================
 
 async function registerCommands() {
 
@@ -479,6 +317,11 @@ async function registerCommands() {
 
 }
 
+
+// ========================================
+// BOT READY
+// ========================================
+
 client.once(
   Events.ClientReady,
   readyClient => {
@@ -491,41 +334,28 @@ client.once(
       "🎬 [MEG]Ariz_CFM_BOT đang hoạt động!"
     );
 
-    if (
-      client.riffy &&
-      typeof client.riffy.init === "function"
-    ) {
-
-      try {
-
-        client.riffy.init(
-          readyClient.user.id
-        );
-
-        console.log(
-          "🎵 Riffy đã kết nối với Discord."
-        );
-
-      } catch (error) {
-
-        console.error(
-          "❌ Không thể init Riffy:"
-        );
-
-        console.error(error);
-
-      }
-
-    }
+    console.log(
+      "🎵 Music system mới đã được nạp."
+    );
 
   }
 );
+
+
+// ========================================
+// INTERACTIONS
+// ========================================
 
 client.on(
   Events.InteractionCreate,
   async interaction => {
 
     try {
+
+
+      // ==================================
+      // BUTTON
+      // ==================================
 
       if (
         interaction.isButton()
@@ -549,6 +379,11 @@ client.on(
 
         ];
 
+
+        // ================================
+        // MUSIC BUTTON
+        // ================================
+
         if (
           musicButtonIds.includes(
             interaction.customId
@@ -566,13 +401,19 @@ client.on(
 
       }
 
+
+      // ==================================
+      // SLASH COMMAND
+      // ==================================
+
       if (
         interaction.isChatInputCommand()
       ) {
 
-        // ================================
+
+        // =================================
         // /PLAY
-        // ================================
+        // =================================
 
         if (
           interaction.commandName === "play"
@@ -588,16 +429,23 @@ client.on(
                 true
               );
 
+
+            // Music mới
             const result =
-              await playQuery({
+              await playQuery(
                 client,
                 interaction,
                 query
               );
 
-            await interaction.editReply(
-              result
-            );
+
+            if (result) {
+
+              await interaction.editReply(
+                result
+              );
+
+            }
 
           } catch (error) {
 
@@ -654,9 +502,10 @@ client.on(
 
         }
 
-        // ================================
+
+        // =================================
         // /WATCH
-        // ================================
+        // =================================
 
         if (
           interaction.commandName === "watch"
@@ -677,6 +526,7 @@ client.on(
               "phim"
             );
 
+
           if (!input) {
 
             await interaction.reply({
@@ -692,11 +542,13 @@ client.on(
 
           }
 
+
           const parts =
             input.trim().split(/\s+/);
 
           const links = [];
           const names = [];
+
 
           for (
             const part of parts
@@ -721,6 +573,7 @@ client.on(
 
           }
 
+
           if (
             links.length === 0
           ) {
@@ -737,6 +590,7 @@ client.on(
             return;
 
           }
+
 
           if (
             links.length > MAX_VIDEOS
@@ -755,10 +609,12 @@ client.on(
 
           }
 
+
           const videoName =
             names.length > 0
               ? names.join(" ")
               : "Video";
+
 
           startWatchLive({
 
@@ -769,14 +625,17 @@ client.on(
 
           });
 
+
           const currentVideo =
             getWatchCurrentVideo();
+
 
           createWatchRoom(
             links[0],
             owner,
             voiceChannel
           );
+
 
           const embed =
             new EmbedBuilder()
@@ -805,6 +664,7 @@ client.on(
               )
 
               .setTimestamp();
+
 
           const row =
             new ActionRowBuilder()
@@ -869,6 +729,7 @@ client.on(
 
               );
 
+
           await interaction.reply({
 
             embeds: [
@@ -881,19 +742,22 @@ client.on(
 
           });
 
+
           console.log(
             `🎬 ${interaction.user.tag} ` +
             `tạo Live "${videoName}" ` +
             `với ${links.length} video.`
           );
 
+
           return;
 
         }
 
-        // ================================
+
+        // =================================
         // /JOIN
-        // ================================
+        // =================================
 
         if (
           interaction.commandName === "join"
@@ -901,6 +765,7 @@ client.on(
 
           const member =
             interaction.member;
+
 
           if (
             !member ||
@@ -921,13 +786,16 @@ client.on(
 
           }
 
+
           const voiceChannel =
             member.voice.channel;
+
 
           const permissions =
             voiceChannel.permissionsFor(
               interaction.client.user
             );
+
 
           if (
             !permissions ||
@@ -946,6 +814,7 @@ client.on(
             return;
 
           }
+
 
           try {
 
@@ -968,6 +837,7 @@ client.on(
 
             });
 
+
             await interaction.reply({
 
               content:
@@ -978,9 +848,11 @@ client.on(
 
             });
 
+
             console.log(
               `🔊 Bot đã join: ${voiceChannel.name}`
             );
+
 
           } catch (error) {
 
@@ -989,6 +861,7 @@ client.on(
             );
 
             console.error(error);
+
 
             await interaction.reply({
 
@@ -1007,13 +880,19 @@ client.on(
 
       }
 
-      // ================================
+
+      // ==================================
       // LIVE BUTTONS
-      // ================================
+      // ==================================
 
       if (
         interaction.isButton()
       ) {
+
+
+        // ================================
+        // LIVE PAUSE
+        // ================================
 
         if (
           interaction.customId ===
@@ -1022,6 +901,7 @@ client.on(
 
           const success =
             watchPause();
+
 
           await interaction.reply({
 
@@ -1034,9 +914,15 @@ client.on(
 
           });
 
+
           return;
 
         }
+
+
+        // ================================
+        // LIVE RESUME
+        // ================================
 
         if (
           interaction.customId ===
@@ -1045,6 +931,7 @@ client.on(
 
           const success =
             watchResume();
+
 
           await interaction.reply({
 
@@ -1057,9 +944,15 @@ client.on(
 
           });
 
+
           return;
 
         }
+
+
+        // ================================
+        // LIVE NEXT
+        // ================================
 
         if (
           interaction.customId ===
@@ -1068,6 +961,7 @@ client.on(
 
           const next =
             watchNext();
+
 
           if (!next) {
 
@@ -1084,6 +978,7 @@ client.on(
 
           }
 
+
           await interaction.reply({
 
             content:
@@ -1094,9 +989,15 @@ client.on(
 
           });
 
+
           return;
 
         }
+
+
+        // ================================
+        // LIVE STOP
+        // ================================
 
         if (
           interaction.customId ===
@@ -1105,6 +1006,7 @@ client.on(
 
           const success =
             watchStop();
+
 
           await interaction.reply({
 
@@ -1117,9 +1019,15 @@ client.on(
 
           });
 
+
           return;
 
         }
+
+
+        // ================================
+        // WATCH INFO
+        // ================================
 
         if (
           interaction.customId ===
@@ -1134,6 +1042,7 @@ client.on(
 
           const current =
             getWatchCurrentVideo();
+
 
           if (
             !room ||
@@ -1153,6 +1062,7 @@ client.on(
             return;
 
           }
+
 
           const infoEmbed =
             new EmbedBuilder()
@@ -1176,6 +1086,7 @@ client.on(
 
               .setTimestamp();
 
+
           await interaction.reply({
 
             embeds: [
@@ -1185,6 +1096,7 @@ client.on(
             ephemeral: true
 
           });
+
 
           return;
 
@@ -1199,6 +1111,7 @@ client.on(
       );
 
       console.error(error);
+
 
       try {
 
@@ -1225,6 +1138,11 @@ client.on(
   }
 );
 
+
+// ========================================
+// START BOT
+// ========================================
+
 async function startBot() {
 
   await registerCommands();
@@ -1232,6 +1150,7 @@ async function startBot() {
   console.log(
     "🔐 Đang kết nối tới Discord..."
   );
+
 
   try {
 
@@ -1253,8 +1172,10 @@ async function startBot() {
 
 }
 
+
 console.log(
   "🚀 Đang khởi động [MEG]Ariz_CFM_BOT..."
 );
 
-startBot(); 
+
+startBot();
