@@ -116,41 +116,17 @@ async function playQuery({ client, interaction, query }) {
     // Thêm bài vào cuối queue
     player.queue.add(track);
 
-    /*
-     * CHƯA CÓ BÀI ĐANG PHÁT
-     * → phát ngay
-     */
-    if (!wasPlaying) {
-      await player.play();
-
-      return {
-        content:
-          `🎵 Đang phát **${track.info.title}**`
-      };
-    }
-
-    /*
-     * ĐANG CÓ BÀI
-     * → giữ nguyên bài hiện tại
-     * → thêm bài mới vào queue
-     */
-    return {
-      content:
-        `🎵 Đã thêm **${track.info.title}** vào danh sách đợi.`
-    };
-  }
-
-  /*
-   * ==============================
-   * LOAD TYPE KHÔNG HỖ TRỢ
-   * ==============================
-   */
-
   return {
     content:
       `❌ Không thể phát kết quả này.\n` +
       `Loại kết quả: \`${loadType || "unknown"}\``
   };
+}
+
+// ========================================
+// EXPORT MUSIC ACTIONS
+// ========================================
+
 module.exports = {
   MusicError,
   getConnectedLavalinkNodes,
