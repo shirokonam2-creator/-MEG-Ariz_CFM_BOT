@@ -589,7 +589,7 @@ async function playQuery(
         }
 
         return {
-            embed:
+            embeds: [
                 successEmbed(
                     "Playlist Added",
 
@@ -605,8 +605,8 @@ async function playQuery(
                             : ""
                     )
                 )
-        };
-    }
+            }
+    };
 
     /*
      * SINGLE TRACK
