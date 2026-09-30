@@ -663,7 +663,7 @@ async function playQuery(
         }
 
         return {
-            embed:
+            embeds: [
                 successEmbed(
                     willPlayNow
                         ? "Now Playing"
@@ -673,8 +673,8 @@ async function playQuery(
                         ? `**${track.info.title}**\n${track.info.author || "Unknown"}`
                         : `**${track.info.title}**\n${track.info.author || "Unknown"}\nPosition: #${queuePosition}`
                 )
+            ]  
         };
-    }
 
     throw new MusicError(
         "No results",
