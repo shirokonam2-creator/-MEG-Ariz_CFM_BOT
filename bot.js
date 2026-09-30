@@ -593,7 +593,7 @@ client.on(
                 client,
                 interaction,
                 query
-              });
+              );
 
             await interaction.editReply(
               result
