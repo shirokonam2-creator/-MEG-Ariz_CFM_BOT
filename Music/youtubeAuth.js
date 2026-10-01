@@ -2,7 +2,6 @@ const fs = require("fs");
 const path = require("path");
 const { Innertube } = require("youtubei.js");
 
-// Railway Volume nên mount tại /data
 const DATA_DIR = process.env.RAILWAY_ENVIRONMENT
   ? "/data"
   : path.join(__dirname, "data");
@@ -13,7 +12,7 @@ const CREDENTIALS_FILE = path.join(
 );
 
 let youtube = null;
-let authPromise = null;
+let youtubePromise = null;
 
 function loadCredentials() {
   try {
@@ -66,87 +65,147 @@ async function getYouTube() {
     return youtube;
   }
 
-  if (authPromise) {
-    return authPromise;
+  if (youtubePromise) {
+    return youtubePromise;
   }
 
-  authPromise = (async () => {
+  youtubePromise = (async () => {
     const credentials = loadCredentials();
 
     const client = await Innertube.create({
       retrieve_player: true
     });
 
-    client.ev.on("auth", data => {
-      if (data.status === "AUTHORIZATION_PENDING") {
-        console.log("");
-        console.log("════════════════════════════════");
-        console.log("🔐 YOUTUBE CẦN XÁC THỰC");
-        console.log("🌐 Mở:");
-        console.log(data.verification_url);
-        console.log("");
-        console.log("🔢 Mã xác thực:");
-        console.log(data.code);
-        console.log("════════════════════════════════");
-        console.log("");
-      }
+    /*
+     * youtubei.js 18.x dùng session
+     * cho cơ chế xác thực.
+     */
+    const session = client.session;
 
-      if (data.status === "SUCCESS") {
-        console.log(
-          "✅ YouTube OAuth đăng nhập thành công!"
-        );
-
-        if (data.credentials) {
-          saveCredentials(data.credentials);
-        }
-      }
-
-      if (data.status === "ERROR") {
-        console.error(
-          "❌ YouTube OAuth lỗi:",
-          data
-        );
-      }
-    });
-
-    client.ev.on(
-      "update-credentials",
-      data => {
-        if (data?.credentials) {
-          saveCredentials(
-            data.credentials
-          );
-        }
-      }
-    );
+    if (!session) {
+      throw new Error(
+        "Không tìm thấy YouTube session."
+      );
+    }
 
     /*
-     * Nếu đã có credentials thì dùng lại.
-     * Nếu chưa có, youtubei.js sẽ phát sự kiện
-     * AUTHORIZATION_PENDING để Railway log
-     * URL + mã xác thực.
+     * Đăng ký OAuth events trên session.
+     */
+    if (session.on) {
+      session.on(
+        "auth",
+        data => {
+          if (
+            data.status ===
+            "AUTHORIZATION_PENDING"
+          ) {
+            console.log("");
+            console.log(
+              "════════════════════════════════"
+            );
+            console.log(
+              "🔐 YOUTUBE CẦN XÁC THỰC"
+            );
+            console.log(
+              "🌐 Mở:"
+            );
+            console.log(
+              data.verification_url
+            );
+            console.log("");
+            console.log(
+              "🔢 Mã xác thực:"
+            );
+            console.log(data.code);
+            console.log(
+              "════════════════════════════════"
+            );
+            console.log("");
+          }
+
+          if (
+            data.status === "SUCCESS"
+          ) {
+            console.log(
+              "✅ YouTube OAuth đăng nhập thành công!"
+            );
+
+            if (data.credentials) {
+              saveCredentials(
+                data.credentials
+              );
+            }
+          }
+
+          if (
+            data.status === "ERROR"
+          ) {
+            console.error(
+              "❌ YouTube OAuth lỗi:",
+              data
+            );
+          }
+        }
+      );
+
+      session.on(
+        "update-credentials",
+        data => {
+          if (
+            data?.credentials
+          ) {
+            saveCredentials(
+              data.credentials
+            );
+          }
+        }
+      );
+    }
+
+    /*
+     * Nếu có credentials cũ,
+     * dùng lại phiên đăng nhập.
      */
     try {
-      await client.signIn(credentials);
+      if (
+        credentials &&
+        Object.keys(credentials).length
+      ) {
+        await client.signIn(
+          credentials
+        );
+
+        console.log(
+          "✅ Đã sử dụng YouTube credentials đã lưu."
+        );
+      } else {
+        /*
+         * Không có credentials:
+         * yêu cầu OAuth.
+         */
+        await client.signIn();
+      }
     } catch (error) {
       console.error(
-        "⚠️ YouTube OAuth chưa hoàn tất:",
+        "⚠️ YouTube OAuth:",
         error.message
       );
 
-      // Không làm bot Discord chết.
-      // Người dùng có thể thử p!play lại sau.
+      /*
+       * Không làm Discord bot crash
+       * chỉ vì YouTube chưa đăng nhập.
+       */
     }
 
     youtube = client;
 
-    return youtube;
+    return client;
   })();
 
   try {
-    return await authPromise;
+    return await youtubePromise;
   } finally {
-    authPromise = null;
+    youtubePromise = null;
   }
 }
 
