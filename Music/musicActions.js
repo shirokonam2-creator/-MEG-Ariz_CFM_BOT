@@ -1,3 +1,15 @@
+const fs = require("fs");
+const path = require("path");
+
+console.log("📁 Music:", fs.readdirSync(__dirname));
+
+console.log(
+  "📁 sources:",
+  fs.existsSync(path.join(__dirname, "sources"))
+    ? fs.readdirSync(path.join(__dirname, "sources"))
+    : "KHÔNG CÓ THƯ MỤC SOURCES"
+);
+
 const {
   searchYouTube,
   resolveYouTube,
