@@ -6,11 +6,13 @@ const {
 
 const {
   playYouTube,
-  pausePlayer,
-  resumePlayer,
-  stopPlayer,
-  getPlayerData,
-  setVolume
+  pause,
+  resume,
+  stop,
+  disconnect,
+  setVolume,
+  adjustVolume,
+  getPlayerState
 } = require("./musicPlayer");
 
 const {
