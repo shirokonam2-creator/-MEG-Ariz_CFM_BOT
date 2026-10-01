@@ -3,33 +3,45 @@ const {
   createAudioPlayer,
   createAudioResource,
   AudioPlayerStatus,
-  NoSubscriberBehavior
+  NoSubscriberBehavior,
+  StreamType
 } = require("@discordjs/voice");
 
-const play = require("play-dl");
+const { Readable } = require("stream");
+const { Innertube } = require("youtubei.js");
 
 const players = new Map();
 
+let youtubeClient = null;
+let youtubeClientPromise = null;
 
-/* =========================================================
-   LẤY PLAYER
-========================================================= */
+async function getYouTubeClient() {
+  if (youtubeClient) return youtubeClient;
+
+  if (!youtubeClientPromise) {
+    youtubeClientPromise = Innertube.create()
+      .then(client => {
+        youtubeClient = client;
+        console.log("✅ YouTube audio client đã sẵn sàng.");
+        return client;
+      })
+      .catch(error => {
+        youtubeClientPromise = null;
+        throw error;
+      });
+  }
+
+  return youtubeClientPromise;
+}
 
 function getPlayer(guildId) {
   return players.get(guildId) || null;
 }
 
-
-/* =========================================================
-   TẠO PLAYER
-========================================================= */
-
 function createPlayer(guildId) {
   let data = players.get(guildId);
 
-  if (data) {
-    return data;
-  }
+  if (data) return data;
 
   const audioPlayer = createAudioPlayer({
     behaviors: {
@@ -39,240 +51,131 @@ function createPlayer(guildId) {
 
   data = {
     audioPlayer,
-
     connection: null,
-
     resource: null,
-
     currentUrl: null,
-
     currentTitle: null,
-
     currentTrack: null,
-
     playing: false,
-
     paused: false,
-
     manualStop: false,
-
     voiceChannel: null,
-
     guild: null
   };
 
+  audioPlayer.on(AudioPlayerStatus.Playing, () => {
+    data.playing = true;
+    data.paused = false;
+  });
 
-  /* =======================================================
-     PLAYING
-  ======================================================= */
+  audioPlayer.on(AudioPlayerStatus.Paused, () => {
+    data.playing = false;
+    data.paused = true;
+  });
 
-  audioPlayer.on(
-    AudioPlayerStatus.Playing,
-    () => {
-      data.playing = true;
+  audioPlayer.on(AudioPlayerStatus.AutoPaused, () => {
+    data.playing = false;
+  });
+
+  audioPlayer.on(AudioPlayerStatus.Idle, async () => {
+    if (data.manualStop) {
+      data.manualStop = false;
+      data.playing = false;
       data.paused = false;
+      data.resource = null;
+      return;
     }
-  );
 
+    data.playing = false;
+    data.paused = false;
+    data.resource = null;
 
-  /* =======================================================
-     PAUSED
-  ======================================================= */
+    console.log(`⏭️ Bài hát đã kết thúc [${guildId}]`);
 
-  audioPlayer.on(
-    AudioPlayerStatus.Paused,
-    () => {
-      data.playing = false;
-      data.paused = true;
-    }
-  );
+    try {
+      const { getNextTrack } = require("./musicQueue");
 
+      const nextTrack = getNextTrack(guildId);
 
-  /* =======================================================
-     AUTO PAUSED
-  ======================================================= */
+      if (!nextTrack) {
+        console.log(`📭 Queue trống [${guildId}]`);
 
-  audioPlayer.on(
-    AudioPlayerStatus.AutoPaused,
-    () => {
-      data.playing = false;
-    }
-  );
-
-
-  /* =======================================================
-     IDLE = BÀI HÁT KẾT THÚC
-  ======================================================= */
-
-  audioPlayer.on(
-    AudioPlayerStatus.Idle,
-    async () => {
-
-      /*
-       * Stop thủ công
-       */
-
-      if (data.manualStop) {
-        data.manualStop = false;
-
-        data.playing = false;
-        data.paused = false;
-        data.resource = null;
+        data.currentTrack = null;
+        data.currentUrl = null;
+        data.currentTitle = null;
 
         return;
       }
 
-
-      data.playing = false;
-      data.paused = false;
-      data.resource = null;
-
+      if (!data.voiceChannel) {
+        console.error(
+          `❌ Không tìm thấy voice channel [${guildId}]`
+        );
+        return;
+      }
 
       console.log(
-        `⏭️ Bài hát đã kết thúc [${guildId}]`
+        `⏭️ Chuyển sang bài tiếp theo: ${nextTrack.songName}`
       );
 
+      await playYouTube(
+        data.guild,
+        data.voiceChannel,
+        nextTrack.url,
+        nextTrack
+      );
 
-      try {
+      // Đồng bộ trạng thái
+      const musicStore = require("./playerStore");
+      const musicData =
+        musicStore.getGuildMusicData(guildId);
 
-        const {
-          getNextTrack
-        } = require("./musicQueue");
+      musicData.currentTrack = nextTrack;
+      musicData.isPlaying = true;
+      musicData.isPaused = false;
 
-        const nextTrack =
-          getNextTrack(guildId);
-
-
-        /*
-         * Queue trống
-         */
-
-        if (!nextTrack) {
-
-          console.log(
-            `📭 Queue trống [${guildId}]`
-          );
-
-          data.currentTrack = null;
-          data.currentUrl = null;
-          data.currentTitle = null;
-
-          return;
-        }
-
-
-        /*
-         * Không còn voice channel
-         */
-
-        if (!data.voiceChannel) {
-
-          console.error(
-            `❌ Không tìm thấy voice channel [${guildId}]`
-          );
-
-          return;
-        }
-
-
-        console.log(
-          `⏭️ Chuyển sang bài tiếp theo: ${nextTrack.songName}`
-        );
-
-
-        await playYouTube(
-          data.guild,
-          data.voiceChannel,
-          nextTrack.url,
-          nextTrack
-        );
-
-      } catch (error) {
-
-        console.error(
-          `❌ Không thể phát bài tiếp theo [${guildId}]:`,
-          error
-        );
-
-      }
-    }
-  );
-
-
-  /* =======================================================
-     ERROR
-  ======================================================= */
-
-  audioPlayer.on(
-    "error",
-    error => {
-
+    } catch (error) {
       console.error(
-        `❌ Music player error [${guildId}]:`,
+        `❌ Không thể phát bài tiếp theo [${guildId}]:`,
         error
       );
-
-      data.playing = false;
-      data.paused = false;
-      data.resource = null;
     }
-  );
+  });
 
+  audioPlayer.on("error", error => {
+    console.error(
+      `❌ Music player error [${guildId}]:`,
+      error
+    );
 
-  players.set(
-    guildId,
-    data
-  );
+    data.playing = false;
+    data.paused = false;
+    data.resource = null;
+  });
+
+  players.set(guildId, data);
 
   return data;
 }
 
-
-/* =========================================================
-   KẾT NỐI VOICE
-========================================================= */
-
-function connectToVoice(
-  guild,
-  voiceChannel
-) {
-
+function connectToVoice(guild, voiceChannel) {
   if (!guild) {
-    throw new Error(
-      "Không tìm thấy server."
-    );
+    throw new Error("Không tìm thấy server.");
   }
 
   if (!voiceChannel) {
-    throw new Error(
-      "Không tìm thấy phòng thoại."
-    );
+    throw new Error("Không tìm thấy phòng thoại.");
   }
 
+  const playerData = createPlayer(guild.id);
 
-  const playerData =
-    createPlayer(guild.id);
-
-
-  playerData.guild =
-    guild;
-
-  playerData.voiceChannel =
-    voiceChannel;
-
-
-  /*
-   * Nếu đã có connection
-   * và vẫn đang ở đúng voice channel
-   * thì dùng lại connection.
-   */
+  playerData.guild = guild;
+  playerData.voiceChannel = voiceChannel;
 
   if (
     playerData.connection &&
-    playerData.connection.joinConfig?.channelId ===
-      voiceChannel.id
+    playerData.connection.joinConfig?.channelId === voiceChannel.id
   ) {
-
     playerData.connection.subscribe(
       playerData.audioPlayer
     );
@@ -280,50 +183,66 @@ function connectToVoice(
     return playerData;
   }
 
-
-  /*
-   * Nếu connection cũ tồn tại
-   * nhưng channel đã thay đổi
-   */
-
   try {
     playerData.connection?.destroy();
-  } catch {}
+  } catch (_) {}
 
+  const connection = joinVoiceChannel({
+    channelId: voiceChannel.id,
+    guildId: guild.id,
+    adapterCreator: guild.voiceAdapterCreator,
+    selfDeaf: true,
+    selfMute: false
+  });
 
-  const connection =
-    joinVoiceChannel({
-      channelId:
-        voiceChannel.id,
+  connection.subscribe(playerData.audioPlayer);
 
-      guildId:
-        guild.id,
-
-      adapterCreator:
-        guild.voiceAdapterCreator,
-
-      selfDeaf: true,
-
-      selfMute: false
-    });
-
-
-  connection.subscribe(
-    playerData.audioPlayer
-  );
-
-
-  playerData.connection =
-    connection;
-
+  playerData.connection = connection;
 
   return playerData;
 }
 
+/**
+ * Lấy audio YouTube bằng youtubei.js
+ * Không sử dụng play-dl nữa.
+ */
+async function getYouTubeAudio(videoId) {
+  if (!videoId) {
+    throw new Error("Không có YouTube video ID.");
+  }
 
-/* =========================================================
-   PHÁT YOUTUBE
-========================================================= */
+  console.log(
+    `🎧 Đang lấy audio trực tiếp từ YouTube: ${videoId}`
+  );
+
+  const youtube = await getYouTubeClient();
+
+  /*
+   * YouTube.js hỗ trợ chọn audio format.
+   * Ưu tiên Opus để Discord Voice có thể phát WebM/Opus
+   * mà không cần chuyển đổi bằng FFmpeg.
+   */
+  const stream = await youtube.download(videoId, {
+    type: "audio",
+    quality: "best",
+    codec: "opus",
+    format: "webm"
+  });
+
+  if (!stream) {
+    throw new Error(
+      "YouTube không trả về audio stream."
+    );
+  }
+
+  /*
+   * youtubei.js trả về Web ReadableStream.
+   * Node.js 24 có Readable.fromWeb().
+   */
+  const nodeStream = Readable.fromWeb(stream);
+
+  return nodeStream;
+}
 
 async function playYouTube(
   guild,
@@ -331,11 +250,8 @@ async function playYouTube(
   url,
   track = null
 ) {
-
   if (!guild) {
-    throw new Error(
-      "Không tìm thấy server."
-    );
+    throw new Error("Không tìm thấy server.");
   }
 
   if (!voiceChannel) {
@@ -350,300 +266,197 @@ async function playYouTube(
     );
   }
 
-
-  const playerData =
-    connectToVoice(
-      guild,
-      voiceChannel
-    );
-
-
-  /*
-   * Nếu đây là bài mới sau bài cũ,
-   * hủy trạng thái stop thủ công.
-   */
+  const playerData = connectToVoice(
+    guild,
+    voiceChannel
+  );
 
   playerData.manualStop = false;
 
-
-  console.log(
-    `🎵 Đang lấy audio YouTube: ${url}`
-  );
-
-
-  const stream =
-    await play.stream(
-      url,
-      {
-        quality: 2,
-
-        discordPlayerCompatibility:
-          true
-      }
-    );
-
-
-  const resource =
-    createAudioResource(
-      stream.stream,
-      {
-        inputType:
-          stream.type,
-
-        inlineVolume:
-          true
-      }
-    );
-
-
   /*
-   * Lấy âm lượng hiện tại.
-   * Nếu chưa có thì dùng 75%.
+   * Lấy video ID từ track trước.
    */
+  let videoId = track?.videoId || null;
 
-  const oldVolume =
-    playerData.resource?.volume?.volume;
+  if (!videoId) {
+    try {
+      const parsed = new URL(url);
 
-
-  const volume =
-    Number.isFinite(oldVolume)
-      ? oldVolume
-      : 0.75;
-
-
-  if (resource.volume) {
-
-    resource.volume.setVolume(
-      volume
-    );
-
+      if (parsed.hostname === "youtu.be") {
+        videoId =
+          parsed.pathname
+            .slice(1)
+            .split("/")[0] || null;
+      } else {
+        videoId =
+          parsed.searchParams.get("v");
+      }
+    } catch (_) {}
   }
 
+  if (!videoId) {
+    throw new Error(
+      "Không thể xác định YouTube video ID."
+    );
+  }
 
-  playerData.resource =
-    resource;
+  console.log(
+    `🎵 Chuẩn bị phát: ${
+      track?.songName || "YouTube"
+    }`
+  );
 
+  const audioStream =
+    await getYouTubeAudio(videoId);
 
-  playerData.currentUrl =
-    url;
+  /*
+   * Audio YouTube được yêu cầu là WebM/Opus,
+   * nên Discord Voice có thể xử lý trực tiếp.
+   */
+  const resource = createAudioResource(
+    audioStream,
+    {
+      inputType: StreamType.WebmOpus,
+      inlineVolume: true
+    }
+  );
 
+  /*
+   * Giữ âm lượng hiện tại.
+   */
+  let volume = 0.75;
+
+  if (
+    playerData.resource?.volume &&
+    Number.isFinite(
+      playerData.resource.volume.volume
+    )
+  ) {
+    volume =
+      playerData.resource.volume.volume;
+  }
+
+  if (resource.volume) {
+    resource.volume.setVolume(volume);
+  }
+
+  playerData.resource = resource;
+
+  playerData.currentUrl = url;
 
   playerData.currentTitle =
     track?.songName ||
     track?.title ||
     "YouTube";
 
-
   playerData.currentTrack =
     track ||
     {
-      songName:
-        playerData.currentTitle,
-
-      url
+      source: "youtube",
+      songName: playerData.currentTitle,
+      url,
+      videoId
     };
-
-
-  /*
-   * Phát audio
-   */
 
   playerData.audioPlayer.play(
     resource
   );
 
-
   console.log(
     `▶️ Đang phát: ${playerData.currentTitle}`
   );
 
-
   return playerData;
 }
 
-
-/* =========================================================
-   PAUSE
-========================================================= */
-
 function pause(guildId) {
+  const data = players.get(guildId);
 
-  const data =
-    players.get(guildId);
-
-  if (!data) {
-    return false;
-  }
+  if (!data) return false;
 
   return data.audioPlayer.pause();
 }
 
-
-/* =========================================================
-   RESUME
-========================================================= */
-
 function resume(guildId) {
+  const data = players.get(guildId);
 
-  const data =
-    players.get(guildId);
-
-  if (!data) {
-    return false;
-  }
+  if (!data) return false;
 
   return data.audioPlayer.unpause();
 }
 
-
-/* =========================================================
-   STOP
-========================================================= */
-
 function stop(guildId) {
+  const data = players.get(guildId);
 
-  const data =
-    players.get(guildId);
-
-  if (!data) {
-    return false;
-  }
-
-
-  /*
-   * Đánh dấu stop thủ công
-   * để Idle không tự chạy queue.
-   */
+  if (!data) return false;
 
   data.manualStop = true;
 
-
   try {
     data.audioPlayer.stop();
-  } catch {}
-
+  } catch (_) {}
 
   data.playing = false;
   data.paused = false;
   data.resource = null;
 
-
   return true;
 }
 
-
-/* =========================================================
-   DISCONNECT
-========================================================= */
-
 function disconnect(guildId) {
+  const data = players.get(guildId);
 
-  const data =
-    players.get(guildId);
-
-  if (!data) {
-    return false;
-  }
-
+  if (!data) return false;
 
   data.manualStop = true;
 
-
   try {
     data.audioPlayer.stop();
-  } catch {}
-
+  } catch (_) {}
 
   try {
     data.connection?.destroy();
-  } catch {}
+  } catch (_) {}
 
-
-  players.delete(
-    guildId
-  );
-
+  players.delete(guildId);
 
   return true;
 }
 
+function setVolume(guildId, volume) {
+  const data = players.get(guildId);
 
-/* =========================================================
-   VOLUME
-========================================================= */
-
-function setVolume(
-  guildId,
-  volume
-) {
-
-  const data =
-    players.get(guildId);
-
-  if (
-    !data ||
-    !data.resource
-  ) {
+  if (!data || !data.resource) {
     return false;
   }
 
-
-  const value =
-    Math.max(
-      0,
-      Math.min(
-        100,
-        Number(volume)
-      )
-    );
-
+  const value = Math.max(
+    0,
+    Math.min(100, Number(volume))
+  );
 
   if (data.resource.volume) {
-
     data.resource.volume.setVolume(
       value / 100
     );
-
   }
-
 
   return value;
 }
 
+function adjustVolume(guildId, amount) {
+  const data = players.get(guildId);
 
-/* =========================================================
-   TĂNG / GIẢM VOLUME
-========================================================= */
-
-function adjustVolume(
-  guildId,
-  amount
-) {
-
-  const data =
-    players.get(guildId);
-
-  if (
-    !data ||
-    !data.resource
-  ) {
+  if (!data || !data.resource) {
     return false;
   }
 
-
   let current = 75;
 
-
-  if (
-    data.resource.volume
-  ) {
-
+  if (data.resource.volume) {
     current =
-      data.resource.volume.volume *
-      100;
-
+      data.resource.volume.volume * 100;
   }
-
 
   return setVolume(
     guildId,
@@ -651,75 +464,37 @@ function adjustVolume(
   );
 }
 
+function getPlayerState(guildId) {
+  const data = players.get(guildId);
 
-/* =========================================================
-   TRẠNG THÁI PLAYER
-========================================================= */
-
-function getPlayerState(
-  guildId
-) {
-
-  const data =
-    players.get(guildId);
-
-  if (!data) {
-    return null;
-  }
-
+  if (!data) return null;
 
   return {
-
-    playing:
-      data.playing,
-
-    paused:
-      data.paused,
-
-    currentUrl:
-      data.currentUrl,
-
-    currentTitle:
-      data.currentTitle,
-
-    currentTrack:
-      data.currentTrack,
-
-    connection:
-      data.connection,
-
-    voiceChannel:
-      data.voiceChannel
+    playing: data.playing,
+    paused: data.paused,
+    currentUrl: data.currentUrl,
+    currentTitle: data.currentTitle,
+    currentTrack: data.currentTrack,
+    connection: data.connection,
+    voiceChannel: data.voiceChannel,
+    volume:
+      data.resource?.volume
+        ? data.resource.volume.volume * 100
+        : 75
   };
 }
 
-
-/* =========================================================
-   EXPORT
-========================================================= */
-
 module.exports = {
-
   getPlayer,
-
   createPlayer,
-
   connectToVoice,
-
   playYouTube,
-
   pause,
-
   resume,
-
   stop,
-
   disconnect,
-
   setVolume,
-
   adjustVolume,
-
-  getPlayerState
-
-}; 
+  getPlayerState,
+  getYouTubeAudio
+};
