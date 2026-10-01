@@ -54,13 +54,17 @@ function createPlayer(guildId) {
 
     paused: false,
 
-    voiceChannel: null
+    manualStop: false,
+
+    voiceChannel: null,
+
+    guild: null
   };
 
 
-  /* -------------------------------------------------------
-     ĐANG PHÁT
-  ------------------------------------------------------- */
+  /* =======================================================
+     PLAYING
+  ======================================================= */
 
   audioPlayer.on(
     AudioPlayerStatus.Playing,
@@ -71,9 +75,9 @@ function createPlayer(guildId) {
   );
 
 
-  /* -------------------------------------------------------
-     TẠM DỪNG
-  ------------------------------------------------------- */
+  /* =======================================================
+     PAUSED
+  ======================================================= */
 
   audioPlayer.on(
     AudioPlayerStatus.Paused,
@@ -84,9 +88,9 @@ function createPlayer(guildId) {
   );
 
 
-  /* -------------------------------------------------------
-     AUTO PAUSE
-  ------------------------------------------------------- */
+  /* =======================================================
+     AUTO PAUSED
+  ======================================================= */
 
   audioPlayer.on(
     AudioPlayerStatus.AutoPaused,
@@ -96,17 +100,16 @@ function createPlayer(guildId) {
   );
 
 
-  /* -------------------------------------------------------
-     BÀI HÁT KẾT THÚC
-  ------------------------------------------------------- */
+  /* =======================================================
+     IDLE = BÀI HÁT KẾT THÚC
+  ======================================================= */
 
   audioPlayer.on(
     AudioPlayerStatus.Idle,
     async () => {
 
       /*
-       * Nếu player vừa được stop() thủ công
-       * thì không tự chuyển bài.
+       * Stop thủ công
        */
 
       if (data.manualStop) {
@@ -130,10 +133,6 @@ function createPlayer(guildId) {
       );
 
 
-      /*
-       * Tự lấy bài tiếp theo từ musicQueue.js
-       */
-
       try {
 
         const {
@@ -145,7 +144,7 @@ function createPlayer(guildId) {
 
 
         /*
-         * Không còn bài trong queue
+         * Queue trống
          */
 
         if (!nextTrack) {
@@ -163,12 +162,11 @@ function createPlayer(guildId) {
 
 
         /*
-         * Vẫn còn bài
+         * Không còn voice channel
          */
 
-        if (
-          !data.voiceChannel
-        ) {
+        if (!data.voiceChannel) {
+
           console.error(
             `❌ Không tìm thấy voice channel [${guildId}]`
           );
@@ -201,9 +199,9 @@ function createPlayer(guildId) {
   );
 
 
-  /* -------------------------------------------------------
+  /* =======================================================
      ERROR
-  ------------------------------------------------------- */
+  ======================================================= */
 
   audioPlayer.on(
     "error",
@@ -256,15 +254,41 @@ function connectToVoice(
     createPlayer(guild.id);
 
 
-  /*
-   * Lưu thông tin để queue
-   * có thể tự phát bài tiếp theo.
-   */
-
-  playerData.guild = guild;
+  playerData.guild =
+    guild;
 
   playerData.voiceChannel =
     voiceChannel;
+
+
+  /*
+   * Nếu đã có connection
+   * và vẫn đang ở đúng voice channel
+   * thì dùng lại connection.
+   */
+
+  if (
+    playerData.connection &&
+    playerData.connection.joinConfig?.channelId ===
+      voiceChannel.id
+  ) {
+
+    playerData.connection.subscribe(
+      playerData.audioPlayer
+    );
+
+    return playerData;
+  }
+
+
+  /*
+   * Nếu connection cũ tồn tại
+   * nhưng channel đã thay đổi
+   */
+
+  try {
+    playerData.connection?.destroy();
+  } catch {}
 
 
   const connection =
@@ -334,6 +358,14 @@ async function playYouTube(
     );
 
 
+  /*
+   * Nếu đây là bài mới sau bài cũ,
+   * hủy trạng thái stop thủ công.
+   */
+
+  playerData.manualStop = false;
+
+
   console.log(
     `🎵 Đang lấy audio YouTube: ${url}`
   );
@@ -365,13 +397,24 @@ async function playYouTube(
 
 
   /*
-   * Âm lượng mặc định 75%
+   * Lấy âm lượng hiện tại.
+   * Nếu chưa có thì dùng 75%.
    */
+
+  const oldVolume =
+    playerData.resource?.volume?.volume;
+
+
+  const volume =
+    Number.isFinite(oldVolume)
+      ? oldVolume
+      : 0.75;
+
 
   if (resource.volume) {
 
     resource.volume.setVolume(
-      0.75
+      volume
     );
 
   }
@@ -469,19 +512,19 @@ function stop(guildId) {
 
   /*
    * Đánh dấu stop thủ công
-   * để Idle không tự chuyển queue.
+   * để Idle không tự chạy queue.
    */
 
   data.manualStop = true;
 
 
-  data.audioPlayer.stop();
+  try {
+    data.audioPlayer.stop();
+  } catch {}
 
 
   data.playing = false;
-
   data.paused = false;
-
   data.resource = null;
 
 
@@ -678,4 +721,5 @@ module.exports = {
   adjustVolume,
 
   getPlayerState
+
 }; 
