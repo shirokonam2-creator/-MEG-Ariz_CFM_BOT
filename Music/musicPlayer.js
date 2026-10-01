@@ -248,12 +248,32 @@ async function getYouTubeAudio(videoId) {
   return nodeStream;
 }
 
-async function playYouTube(
-  guild,
-  voiceChannel,
-  url,
-  track = null
-) {
+async function getYouTubeAudio(videoId) {
+  if (!videoId) {
+    throw new Error("Không có YouTube video ID.");
+  }
+
+  console.log(
+    `🎧 Đang lấy audio trực tiếp từ YouTube: ${videoId}`
+  );
+
+  const youtube = await getYouTube();
+
+  const stream = await youtube.download(videoId, {
+    type: "audio",
+    quality: "best",
+    codec: "opus",
+    format: "webm"
+  });
+
+  if (!stream) {
+    throw new Error("YouTube không trả về audio stream.");
+  }
+
+  const { Readable } = require("stream");
+
+  return Readable.fromWeb(stream);
+    }
   if (!guild) {
     throw new Error("Không tìm thấy server.");
   }
