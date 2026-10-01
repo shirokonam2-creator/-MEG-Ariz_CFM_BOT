@@ -330,9 +330,7 @@ async function getYouTubeAudio(videoId) {
     }`
   );
 
-  const audioStream =
-    await getYouTubeAudio(videoId);
-
+ 
   /*
    * Audio YouTube được yêu cầu là WebM/Opus,
    * nên Discord Voice có thể xử lý trực tiếp.
