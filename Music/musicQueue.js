@@ -143,8 +143,7 @@ function getQueueSize(guildId) {
  */
 function isQueueEmpty(guildId) {
   return getQueueSize(guildId) === 0;
-}
-
+    }
 /**
  * Xóa queue khỏi bộ nhớ
  */
