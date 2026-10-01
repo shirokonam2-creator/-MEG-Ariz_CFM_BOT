@@ -95,7 +95,7 @@ async function playQuery(client, message, query) {
   if (
     playerData &&
     playerData.currentTrack &&
-    playerData.isPlaying
+    playerData.playing
   ) {
     const queue = addToQueue(
       guildId,
