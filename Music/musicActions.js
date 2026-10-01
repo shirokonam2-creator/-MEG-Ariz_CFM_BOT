@@ -9,18 +9,16 @@ const {
   pause,
   resume,
   stop,
-  disconnect,
   setVolume,
-  adjustVolume,
   getPlayerState
 } = require("./musicPlayer");
 
 const {
-  addTrack,
+  addToQueue,
   getQueue,
   getNextTrack,
   clearQueue,
-  removeTrack,
+  removeFromQueue,
   shuffleQueue
 } = require("./musicQueue");
 
@@ -40,12 +38,18 @@ async function findTrack(query) {
     throw new Error("Bạn chưa nhập tên bài hát.");
   }
 
-  // Nếu là URL YouTube
+  // Nếu nhập URL YouTube
   if (isYouTubeUrl(text)) {
-    return await resolveYouTube(text);
+    const track = await resolveYouTube(text);
+
+    if (!track) {
+      throw new Error("Không thể lấy bài hát từ URL YouTube.");
+    }
+
+    return track;
   }
 
-  // Nếu là tên bài hát
+  // Nếu nhập tên bài hát
   const track = await searchYouTube(text);
 
   if (!track) {
@@ -70,41 +74,46 @@ async function playQuery(client, message, query) {
   }
 
   const voiceChannel = message.member.voice.channel;
+  const guildId = message.guild.id;
 
-  // Tìm bài
+  // Tìm bài hát
   const track = await findTrack(query);
 
-  // Lấy dữ liệu player
-  let musicData = getGuildMusicData(message.guild.id);
+  // Dữ liệu Music
+  const musicData = getGuildMusicData(guildId);
+
+  // Dữ liệu player thực tế
+  const playerData = getPlayerState(guildId);
 
   /*
-   * Nếu đang có bài hát:
-   * -> Không ngắt bài hiện tại
-   * -> Thêm bài mới vào queue
+   * ĐANG PHÁT
+   *
+   * Không ngắt bài hiện tại.
+   * Bài mới được thêm vào queue.
    */
-
-  const playerData = getPlayerData(message.guild.id);
 
   if (
     playerData &&
     playerData.currentTrack &&
     playerData.isPlaying
   ) {
-    const position = addTrack(
-      message.guild.id,
+    const queue = addToQueue(
+      guildId,
       track
     );
 
     return {
       type: "queue",
       track,
-      position
+      position: queue.length
     };
   }
 
+
   /*
-   * Không có bài đang phát
-   * -> phát ngay
+   * CHƯA CÓ BÀI
+   *
+   * Phát ngay lập tức.
    */
 
   await playYouTube(
@@ -116,6 +125,7 @@ async function playQuery(client, message, query) {
 
   musicData.currentTrack = track;
   musicData.isPlaying = true;
+  musicData.isPaused = false;
 
   return {
     type: "playing",
@@ -131,14 +141,24 @@ async function playQuery(client, message, query) {
 async function playNext(client, guild, voiceChannel) {
   const nextTrack = getNextTrack(guild.id);
 
+  /*
+   * Không còn bài trong queue
+   */
+
   if (!nextTrack) {
     const musicData = getGuildMusicData(guild.id);
 
     musicData.currentTrack = null;
     musicData.isPlaying = false;
+    musicData.isPaused = false;
 
     return null;
   }
+
+
+  /*
+   * Phát bài tiếp theo
+   */
 
   await playYouTube(
     guild,
@@ -151,6 +171,7 @@ async function playNext(client, guild, voiceChannel) {
 
   musicData.currentTrack = nextTrack;
   musicData.isPlaying = true;
+  musicData.isPaused = false;
 
   return nextTrack;
 }
@@ -161,13 +182,14 @@ async function playNext(client, guild, voiceChannel) {
 ========================================================= */
 
 function pausePlayback(guildId) {
-  const result = pausePlayer(guildId);
+  const result = pause(guildId);
 
   if (!result) {
     throw new Error("Hiện không có bài hát đang phát.");
   }
 
   const musicData = getGuildMusicData(guildId);
+
   musicData.isPlaying = false;
   musicData.isPaused = true;
 
@@ -180,13 +202,14 @@ function pausePlayback(guildId) {
 ========================================================= */
 
 function resumePlayback(guildId) {
-  const result = resumePlayer(guildId);
+  const result = resume(guildId);
 
   if (!result) {
     throw new Error("Không có bài hát đang tạm dừng.");
   }
 
   const musicData = getGuildMusicData(guildId);
+
   musicData.isPlaying = true;
   musicData.isPaused = false;
 
@@ -199,7 +222,9 @@ function resumePlayback(guildId) {
 ========================================================= */
 
 function stopPlayback(guildId) {
-  stopPlayer(guildId);
+  stop(guildId);
+
+  // Xóa toàn bộ queue
   clearQueue(guildId);
 
   const musicData = getGuildMusicData(guildId);
@@ -217,13 +242,49 @@ function stopPlayback(guildId) {
 ========================================================= */
 
 async function skipTrack(client, guild, voiceChannel) {
-  stopPlayer(guild.id);
+  /*
+   * Lấy bài tiếp theo TRƯỚC khi stop
+   * để tránh Idle event tự xử lý queue hai lần.
+   */
 
-  return await playNext(
-    client,
+  const nextTrack = getNextTrack(guild.id);
+
+  if (!nextTrack) {
+    stop(guild.id);
+
+    const musicData = getGuildMusicData(guild.id);
+
+    musicData.currentTrack = null;
+    musicData.isPlaying = false;
+    musicData.isPaused = false;
+
+    return null;
+  }
+
+  /*
+   * Dừng bài hiện tại
+   */
+
+  stop(guild.id);
+
+  /*
+   * Phát bài tiếp theo
+   */
+
+  await playYouTube(
     guild,
-    voiceChannel
+    voiceChannel,
+    nextTrack.url,
+    nextTrack
   );
+
+  const musicData = getGuildMusicData(guild.id);
+
+  musicData.currentTrack = nextTrack;
+  musicData.isPlaying = true;
+  musicData.isPaused = false;
+
+  return nextTrack;
 }
 
 
@@ -251,8 +312,8 @@ function getMusicQueue(guildId) {
    REMOVE
 ========================================================= */
 
-function removeFromQueue(guildId, index) {
-  return removeTrack(
+function removeFromMusicQueue(guildId, index) {
+  return removeFromQueue(
     guildId,
     index
   );
@@ -275,9 +336,15 @@ function clearMusicQueue(guildId) {
 ========================================================= */
 
 function changeVolume(guildId, volume) {
-  const value = Math.max(
+  let value = Number(volume);
+
+  if (!Number.isFinite(value)) {
+    throw new Error("Âm lượng không hợp lệ.");
+  }
+
+  value = Math.max(
     0,
-    Math.min(100, Number(volume))
+    Math.min(100, value)
   );
 
   setVolume(
@@ -294,11 +361,21 @@ function changeVolume(guildId, volume) {
 
 
 /* =========================================================
+   GET PLAYER STATE
+========================================================= */
+
+function getMusicPlayerState(guildId) {
+  return getPlayerState(guildId);
+}
+
+
+/* =========================================================
    EXPORT
 ========================================================= */
 
 module.exports = {
   findTrack,
+
   playQuery,
   playNext,
 
@@ -310,8 +387,10 @@ module.exports = {
   shuffleTracks,
 
   getMusicQueue,
-  removeFromQueue,
+  removeFromMusicQueue,
   clearMusicQueue,
 
-  changeVolume
+  changeVolume,
+
+  getMusicPlayerState
 };
