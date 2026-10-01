@@ -12,31 +12,12 @@ const {
 } = require("@discordjs/voice");
 
 const { Readable } = require("stream");
-const { Innertube } = require("youtubei.js");
 
 const players = new Map();
 
-let youtubeClient = null;
-let youtubeClientPromise = null;
-
-async function getYouTubeClient() {
-  if (youtubeClient) return youtubeClient;
-
-  if (!youtubeClientPromise) {
-    youtubeClientPromise = Innertube.create()
-      .then(client => {
-        youtubeClient = client;
-        console.log("✅ YouTube audio client đã sẵn sàng.");
-        return client;
-      })
-      .catch(error => {
-        youtubeClientPromise = null;
-        throw error;
-      });
-  }
-
-  return youtubeClientPromise;
-}
+/* ================================
+   PLAYER
+================================ */
 
 function getPlayer(guildId) {
   return players.get(guildId) || null;
@@ -57,128 +38,172 @@ function createPlayer(guildId) {
     audioPlayer,
     connection: null,
     resource: null,
+
     currentUrl: null,
     currentTitle: null,
     currentTrack: null,
+
     playing: false,
     paused: false,
     manualStop: false,
+
     voiceChannel: null,
     guild: null
   };
 
-  audioPlayer.on(AudioPlayerStatus.Playing, () => {
-    data.playing = true;
-    data.paused = false;
-  });
+  audioPlayer.on(
+    AudioPlayerStatus.Playing,
+    () => {
+      data.playing = true;
+      data.paused = false;
+    }
+  );
 
-  audioPlayer.on(AudioPlayerStatus.Paused, () => {
-    data.playing = false;
-    data.paused = true;
-  });
+  audioPlayer.on(
+    AudioPlayerStatus.Paused,
+    () => {
+      data.playing = false;
+      data.paused = true;
+    }
+  );
 
-  audioPlayer.on(AudioPlayerStatus.AutoPaused, () => {
-    data.playing = false;
-  });
+  audioPlayer.on(
+    AudioPlayerStatus.AutoPaused,
+    () => {
+      data.playing = false;
+    }
+  );
 
-  audioPlayer.on(AudioPlayerStatus.Idle, async () => {
-    if (data.manualStop) {
-      data.manualStop = false;
+  audioPlayer.on(
+    AudioPlayerStatus.Idle,
+    async () => {
+      if (data.manualStop) {
+        data.manualStop = false;
+        data.playing = false;
+        data.paused = false;
+        data.resource = null;
+        return;
+      }
+
       data.playing = false;
       data.paused = false;
       data.resource = null;
-      return;
-    }
-
-    data.playing = false;
-    data.paused = false;
-    data.resource = null;
-
-    console.log(`⏭️ Bài hát đã kết thúc [${guildId}]`);
-
-    try {
-      const { getNextTrack } = require("./musicQueue");
-
-      const nextTrack = getNextTrack(guildId);
-
-      if (!nextTrack) {
-        console.log(`📭 Queue trống [${guildId}]`);
-
-        data.currentTrack = null;
-        data.currentUrl = null;
-        data.currentTitle = null;
-
-        return;
-      }
-
-      if (!data.voiceChannel) {
-        console.error(
-          `❌ Không tìm thấy voice channel [${guildId}]`
-        );
-        return;
-      }
 
       console.log(
-        `⏭️ Chuyển sang bài tiếp theo: ${nextTrack.songName}`
+        `⏭️ Bài hát đã kết thúc [${guildId}]`
       );
 
-      await playYouTube(
-        data.guild,
-        data.voiceChannel,
-        nextTrack.url,
-        nextTrack
-      );
+      try {
+        const {
+          getNextTrack
+        } = require("./musicQueue");
 
-      // Đồng bộ trạng thái
-      const musicStore = require("./playerStore");
-      const musicData =
-        musicStore.getGuildMusicData(guildId);
+        const nextTrack =
+          getNextTrack(guildId);
 
-      musicData.currentTrack = nextTrack;
-      musicData.isPlaying = true;
-      musicData.isPaused = false;
+        if (!nextTrack) {
+          console.log(
+            `📭 Queue trống [${guildId}]`
+          );
 
-    } catch (error) {
+          data.currentTrack = null;
+          data.currentUrl = null;
+          data.currentTitle = null;
+
+          return;
+        }
+
+        if (!data.voiceChannel) {
+          console.error(
+            `❌ Không tìm thấy voice channel [${guildId}]`
+          );
+          return;
+        }
+
+        console.log(
+          `⏭️ Chuyển sang bài tiếp theo: ${nextTrack.songName}`
+        );
+
+        await playYouTube(
+          data.guild,
+          data.voiceChannel,
+          nextTrack.url,
+          nextTrack
+        );
+
+        const musicStore =
+          require("./playerStore");
+
+        const musicData =
+          musicStore.getGuildMusicData(
+            guildId
+          );
+
+        musicData.currentTrack =
+          nextTrack;
+
+        musicData.isPlaying = true;
+        musicData.isPaused = false;
+
+      } catch (error) {
+        console.error(
+          `❌ Không thể phát bài tiếp theo [${guildId}]:`,
+          error
+        );
+      }
+    }
+  );
+
+  audioPlayer.on(
+    "error",
+    error => {
       console.error(
-        `❌ Không thể phát bài tiếp theo [${guildId}]:`,
+        `❌ Music player error [${guildId}]:`,
         error
       );
+
+      data.playing = false;
+      data.paused = false;
+      data.resource = null;
     }
-  });
-
-  audioPlayer.on("error", error => {
-    console.error(
-      `❌ Music player error [${guildId}]:`,
-      error
-    );
-
-    data.playing = false;
-    data.paused = false;
-    data.resource = null;
-  });
+  );
 
   players.set(guildId, data);
 
   return data;
 }
 
-function connectToVoice(guild, voiceChannel) {
+/* ================================
+   VOICE CONNECTION
+================================ */
+
+function connectToVoice(
+  guild,
+  voiceChannel
+) {
   if (!guild) {
-    throw new Error("Không tìm thấy server.");
+    throw new Error(
+      "Không tìm thấy server."
+    );
   }
 
   if (!voiceChannel) {
-    throw new Error("Không tìm thấy phòng thoại.");
+    throw new Error(
+      "Không tìm thấy phòng thoại."
+    );
   }
 
-  const playerData = createPlayer(guild.id);
+  const playerData =
+    createPlayer(guild.id);
 
   playerData.guild = guild;
-  playerData.voiceChannel = voiceChannel;
+  playerData.voiceChannel =
+    voiceChannel;
 
   if (
     playerData.connection &&
-    playerData.connection.joinConfig?.channelId === voiceChannel.id
+    playerData.connection.joinConfig
+      ?.channelId === voiceChannel.id
   ) {
     playerData.connection.subscribe(
       playerData.audioPlayer
@@ -191,47 +216,61 @@ function connectToVoice(guild, voiceChannel) {
     playerData.connection?.destroy();
   } catch (_) {}
 
-  const connection = joinVoiceChannel({
-    channelId: voiceChannel.id,
-    guildId: guild.id,
-    adapterCreator: guild.voiceAdapterCreator,
-    selfDeaf: true,
-    selfMute: false
-  });
+  const connection =
+    joinVoiceChannel({
+      channelId:
+        voiceChannel.id,
 
-  connection.subscribe(playerData.audioPlayer);
+      guildId:
+        guild.id,
 
-  playerData.connection = connection;
+      adapterCreator:
+        guild.voiceAdapterCreator,
+
+      selfDeaf: true,
+      selfMute: false
+    });
+
+  connection.subscribe(
+    playerData.audioPlayer
+  );
+
+  playerData.connection =
+    connection;
 
   return playerData;
 }
 
-/**
- * Lấy audio YouTube bằng youtubei.js
- * Không sử dụng play-dl nữa.
- */
-async function getYouTubeAudio(videoId) {
+/* ================================
+   YOUTUBE AUDIO
+================================ */
+
+async function getYouTubeAudio(
+  videoId
+) {
   if (!videoId) {
-    throw new Error("Không có YouTube video ID.");
+    throw new Error(
+      "Không có YouTube video ID."
+    );
   }
 
   console.log(
     `🎧 Đang lấy audio trực tiếp từ YouTube: ${videoId}`
   );
 
-  const youtube = await getYouTubeClient();
+  const youtube =
+    await getYouTube();
 
-  /*
-   * YouTube.js hỗ trợ chọn audio format.
-   * Ưu tiên Opus để Discord Voice có thể phát WebM/Opus
-   * mà không cần chuyển đổi bằng FFmpeg.
-   */
-  const stream = await youtube.download(videoId, {
-    type: "audio",
-    quality: "best",
-    codec: "opus",
-    format: "webm"
-  });
+  const stream =
+    await youtube.download(
+      videoId,
+      {
+        type: "audio",
+        quality: "best",
+        codec: "opus",
+        format: "webm"
+      }
+    );
 
   if (!stream) {
     throw new Error(
@@ -240,42 +279,28 @@ async function getYouTubeAudio(videoId) {
   }
 
   /*
-   * youtubei.js trả về Web ReadableStream.
-   * Node.js 24 có Readable.fromWeb().
+   * Chuyển Web ReadableStream
+   * thành Node.js Readable stream.
    */
-  const nodeStream = Readable.fromWeb(stream);
-
-  return nodeStream;
+  return Readable.fromWeb(
+    stream
+  );
 }
 
-async function getYouTubeAudio(videoId) {
-  if (!videoId) {
-    throw new Error("Không có YouTube video ID.");
-  }
+/* ================================
+   PLAY YOUTUBE
+================================ */
 
-  console.log(
-    `🎧 Đang lấy audio trực tiếp từ YouTube: ${videoId}`
-  );
-
-  const youtube = await getYouTube();
-
-  const stream = await youtube.download(videoId, {
-    type: "audio",
-    quality: "best",
-    codec: "opus",
-    format: "webm"
-  });
-
-  if (!stream) {
-    throw new Error("YouTube không trả về audio stream.");
-  }
-
-  const { Readable } = require("stream");
-
-  return Readable.fromWeb(stream);
-    }
+async function playYouTube(
+  guild,
+  voiceChannel,
+  url,
+  track = null
+) {
   if (!guild) {
-    throw new Error("Không tìm thấy server.");
+    throw new Error(
+      "Không tìm thấy server."
+    );
   }
 
   if (!voiceChannel) {
@@ -290,30 +315,40 @@ async function getYouTubeAudio(videoId) {
     );
   }
 
-  const playerData = connectToVoice(
-    guild,
-    voiceChannel
-  );
+  const playerData =
+    connectToVoice(
+      guild,
+      voiceChannel
+    );
 
   playerData.manualStop = false;
 
-  /*
-   * Lấy video ID từ track trước.
-   */
-  let videoId = track?.videoId || null;
+  /* ============================
+     LẤY VIDEO ID
+  ============================ */
+
+  let videoId =
+    track?.videoId || null;
 
   if (!videoId) {
     try {
-      const parsed = new URL(url);
+      const parsed =
+        new URL(url);
 
-      if (parsed.hostname === "youtu.be") {
+      if (
+        parsed.hostname ===
+          "youtu.be"
+      ) {
         videoId =
           parsed.pathname
             .slice(1)
-            .split("/")[0] || null;
+            .split("/")[0] ||
+          null;
       } else {
         videoId =
-          parsed.searchParams.get("v");
+          parsed.searchParams.get(
+            "v"
+          );
       }
     } catch (_) {}
   }
@@ -326,45 +361,74 @@ async function getYouTubeAudio(videoId) {
 
   console.log(
     `🎵 Chuẩn bị phát: ${
-      track?.songName || "YouTube"
+      track?.songName ||
+      "YouTube"
     }`
   );
 
- 
-  /*
-   * Audio YouTube được yêu cầu là WebM/Opus,
-   * nên Discord Voice có thể xử lý trực tiếp.
-   */
-  const resource = createAudioResource(
-    audioStream,
-    {
-      inputType: StreamType.WebmOpus,
-      inlineVolume: true
-    }
-  );
+  /* ============================
+     LẤY AUDIO
+  ============================ */
 
-  /*
-   * Giữ âm lượng hiện tại.
-   */
+  const audioStream =
+    await getYouTubeAudio(
+      videoId
+    );
+
+  if (!audioStream) {
+    throw new Error(
+      "Không lấy được audio YouTube."
+    );
+  }
+
+  /* ============================
+     TẠO AUDIO RESOURCE
+  ============================ */
+
+  const resource =
+    createAudioResource(
+      audioStream,
+      {
+        inputType:
+          StreamType.WebmOpus,
+
+        inlineVolume: true
+      }
+    );
+
+  /* ============================
+     GIỮ ÂM LƯỢNG
+  ============================ */
+
   let volume = 0.75;
 
   if (
     playerData.resource?.volume &&
     Number.isFinite(
-      playerData.resource.volume.volume
+      playerData.resource
+        .volume.volume
     )
   ) {
     volume =
-      playerData.resource.volume.volume;
+      playerData.resource
+        .volume.volume;
   }
 
   if (resource.volume) {
-    resource.volume.setVolume(volume);
+    resource.volume.setVolume(
+      volume
+    );
   }
 
-  playerData.resource = resource;
+  /* ============================
+     LƯU TRACK
+  ============================ */
 
-  playerData.currentUrl = url;
+  playerData.resource =
+    resource;
+
+  playerData.currentUrl =
+    url;
 
   playerData.currentTitle =
     track?.songName ||
@@ -372,13 +436,17 @@ async function getYouTubeAudio(videoId) {
     "YouTube";
 
   playerData.currentTrack =
-    track ||
-    {
+    track || {
       source: "youtube",
-      songName: playerData.currentTitle,
+      songName:
+        playerData.currentTitle,
       url,
       videoId
     };
+
+  /* ============================
+     PHÁT
+  ============================ */
 
   playerData.audioPlayer.play(
     resource
@@ -391,26 +459,47 @@ async function getYouTubeAudio(videoId) {
   return playerData;
 }
 
-function pause(guildId) {
-  const data = players.get(guildId);
+/* ================================
+   PAUSE
+================================ */
 
-  if (!data) return false;
+function pause(guildId) {
+  const data =
+    players.get(guildId);
+
+  if (!data) {
+    return false;
+  }
 
   return data.audioPlayer.pause();
 }
 
-function resume(guildId) {
-  const data = players.get(guildId);
+/* ================================
+   RESUME
+================================ */
 
-  if (!data) return false;
+function resume(guildId) {
+  const data =
+    players.get(guildId);
+
+  if (!data) {
+    return false;
+  }
 
   return data.audioPlayer.unpause();
 }
 
-function stop(guildId) {
-  const data = players.get(guildId);
+/* ================================
+   STOP
+================================ */
 
-  if (!data) return false;
+function stop(guildId) {
+  const data =
+    players.get(guildId);
+
+  if (!data) {
+    return false;
+  }
 
   data.manualStop = true;
 
@@ -425,10 +514,17 @@ function stop(guildId) {
   return true;
 }
 
-function disconnect(guildId) {
-  const data = players.get(guildId);
+/* ================================
+   DISCONNECT
+================================ */
 
-  if (!data) return false;
+function disconnect(guildId) {
+  const data =
+    players.get(guildId);
+
+  if (!data) {
+    return false;
+  }
 
   data.manualStop = true;
 
@@ -445,17 +541,32 @@ function disconnect(guildId) {
   return true;
 }
 
-function setVolume(guildId, volume) {
-  const data = players.get(guildId);
+/* ================================
+   VOLUME
+================================ */
 
-  if (!data || !data.resource) {
+function setVolume(
+  guildId,
+  volume
+) {
+  const data =
+    players.get(guildId);
+
+  if (
+    !data ||
+    !data.resource
+  ) {
     return false;
   }
 
-  const value = Math.max(
-    0,
-    Math.min(100, Number(volume))
-  );
+  const value =
+    Math.max(
+      0,
+      Math.min(
+        100,
+        Number(volume)
+      )
+    );
 
   if (data.resource.volume) {
     data.resource.volume.setVolume(
@@ -466,10 +577,17 @@ function setVolume(guildId, volume) {
   return value;
 }
 
-function adjustVolume(guildId, amount) {
-  const data = players.get(guildId);
+function adjustVolume(
+  guildId,
+  amount
+) {
+  const data =
+    players.get(guildId);
 
-  if (!data || !data.resource) {
+  if (
+    !data ||
+    !data.resource
+  ) {
     return false;
   }
 
@@ -477,7 +595,8 @@ function adjustVolume(guildId, amount) {
 
   if (data.resource.volume) {
     current =
-      data.resource.volume.volume * 100;
+      data.resource.volume.volume *
+      100;
   }
 
   return setVolume(
@@ -486,25 +605,53 @@ function adjustVolume(guildId, amount) {
   );
 }
 
-function getPlayerState(guildId) {
-  const data = players.get(guildId);
+/* ================================
+   PLAYER STATE
+================================ */
 
-  if (!data) return null;
+function getPlayerState(
+  guildId
+) {
+  const data =
+    players.get(guildId);
+
+  if (!data) {
+    return null;
+  }
 
   return {
-    playing: data.playing,
-    paused: data.paused,
-    currentUrl: data.currentUrl,
-    currentTitle: data.currentTitle,
-    currentTrack: data.currentTrack,
-    connection: data.connection,
-    voiceChannel: data.voiceChannel,
+    playing:
+      data.playing,
+
+    paused:
+      data.paused,
+
+    currentUrl:
+      data.currentUrl,
+
+    currentTitle:
+      data.currentTitle,
+
+    currentTrack:
+      data.currentTrack,
+
+    connection:
+      data.connection,
+
+    voiceChannel:
+      data.voiceChannel,
+
     volume:
       data.resource?.volume
-        ? data.resource.volume.volume * 100
+        ? data.resource.volume.volume *
+          100
         : 75
   };
 }
+
+/* ================================
+   EXPORT
+================================ */
 
 module.exports = {
   getPlayer,
@@ -519,4 +666,4 @@ module.exports = {
   adjustVolume,
   getPlayerState,
   getYouTubeAudio
-};
+}; 
