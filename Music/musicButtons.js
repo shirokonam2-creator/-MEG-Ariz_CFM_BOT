@@ -13,39 +13,17 @@ const {
   disconnect
 } = require("./musicPlayer");
 
-
-/* =========================================================
-   MUSIC BUTTON HANDLER
-========================================================= */
-
 async function handleMusicButton(interaction) {
+  const id = interaction.customId;
+  const guildId = interaction.guildId;
 
-  const id =
-    interaction.customId;
-
-  const guildId =
-    interaction.guildId;
-
-
-  if (!guildId) {
-    return;
-  }
-
+  if (!guildId) return;
 
   try {
-
     switch (id) {
 
-
-      /* ===================================================
-         PAUSE
-      =================================================== */
-
       case "music_pause": {
-
-        const result =
-          pausePlayback(guildId);
-
+        const result = pausePlayback(guildId);
 
         await interaction.reply({
           content: result
@@ -57,16 +35,8 @@ async function handleMusicButton(interaction) {
         break;
       }
 
-
-      /* ===================================================
-         RESUME
-      =================================================== */
-
       case "music_resume": {
-
-        const result =
-          resumePlayback(guildId);
-
+        const result = resumePlayback(guildId);
 
         await interaction.reply({
           content: result
@@ -78,28 +48,15 @@ async function handleMusicButton(interaction) {
         break;
       }
 
-
-      /* ===================================================
-         SKIP
-      =================================================== */
-
       case "music_skip": {
-
-        if (
-          !interaction.guild
-        ) {
-          throw new Error(
-            "Không tìm thấy server."
-          );
+        if (!interaction.guild) {
+          throw new Error("Không tìm thấy server.");
         }
-
 
         const voiceChannel =
           interaction.member?.voice?.channel;
 
-
         if (!voiceChannel) {
-
           await interaction.reply({
             content:
               "❌ Bạn phải ở trong voice channel.",
@@ -109,14 +66,11 @@ async function handleMusicButton(interaction) {
           break;
         }
 
-
-        const track =
-          await skipTrack(
-            interaction.client,
-            interaction.guild,
-            voiceChannel
-          );
-
+        const track = await skipTrack(
+          interaction.client,
+          interaction.guild,
+          voiceChannel
+        );
 
         await interaction.reply({
           content: track
@@ -128,17 +82,8 @@ async function handleMusicButton(interaction) {
         break;
       }
 
-
-      /* ===================================================
-         STOP
-      =================================================== */
-
       case "music_stop": {
-
-        stopPlayback(
-          guildId
-        );
-
+        stopPlayback(guildId);
 
         await interaction.reply({
           content:
@@ -149,21 +94,10 @@ async function handleMusicButton(interaction) {
         break;
       }
 
-
-      /* ===================================================
-         SHUFFLE
-      =================================================== */
-
       case "music_shuffle": {
-
-        const queue =
-          getMusicQueue(
-            guildId
-          );
-
+        const queue = getMusicQueue(guildId);
 
         if (!queue.length) {
-
           await interaction.reply({
             content:
               "📭 Hàng đợi đang trống.",
@@ -173,11 +107,7 @@ async function handleMusicButton(interaction) {
           break;
         }
 
-
-        shuffleTracks(
-          guildId
-        );
-
+        shuffleTracks(guildId);
 
         await interaction.reply({
           content:
@@ -188,24 +118,11 @@ async function handleMusicButton(interaction) {
         break;
       }
 
-
-      /* ===================================================
-         VOLUME DOWN
-      =================================================== */
-
       case "music_vol_down": {
-
         const state =
-          getMusicPlayerState(
-            guildId
-          );
+          getMusicPlayerState(guildId);
 
-
-        if (
-          !state ||
-          !state.currentTrack
-        ) {
-
+        if (!state || !state.currentTrack) {
           await interaction.reply({
             content:
               "❌ Không có bài đang phát.",
@@ -215,21 +132,13 @@ async function handleMusicButton(interaction) {
           break;
         }
 
-
-        /*
-         * Giảm 10%
-         */
-
         const currentVolume =
           state.volume ?? 75;
 
-
-        const volume =
-          changeVolume(
-            guildId,
-            currentVolume - 10
-          );
-
+        const volume = changeVolume(
+          guildId,
+          currentVolume - 10
+        );
 
         await interaction.reply({
           content:
@@ -240,24 +149,11 @@ async function handleMusicButton(interaction) {
         break;
       }
 
-
-      /* ===================================================
-         VOLUME UP
-      =================================================== */
-
       case "music_vol_up": {
-
         const state =
-          getMusicPlayerState(
-            guildId
-          );
+          getMusicPlayerState(guildId);
 
-
-        if (
-          !state ||
-          !state.currentTrack
-        ) {
-
+        if (!state || !state.currentTrack) {
           await interaction.reply({
             content:
               "❌ Không có bài đang phát.",
@@ -267,21 +163,13 @@ async function handleMusicButton(interaction) {
           break;
         }
 
-
-        /*
-         * Tăng 10%
-         */
-
         const currentVolume =
           state.volume ?? 75;
 
-
-        const volume =
-          changeVolume(
-            guildId,
-            currentVolume + 10
-          );
-
+        const volume = changeVolume(
+          guildId,
+          currentVolume + 10
+        );
 
         await interaction.reply({
           content:
@@ -292,21 +180,11 @@ async function handleMusicButton(interaction) {
         break;
       }
 
-
-      /* ===================================================
-         QUEUE
-      =================================================== */
-
       case "music_queue": {
-
         const queue =
-          getMusicQueue(
-            guildId
-          );
-
+          getMusicQueue(guildId);
 
         if (!queue.length) {
-
           await interaction.reply({
             content:
               "📭 Hàng đợi đang trống.",
@@ -316,15 +194,12 @@ async function handleMusicButton(interaction) {
           break;
         }
 
-
-        const text =
-          queue
-            .map(
-              (track, index) =>
-                `${index + 1}. ${track.songName}`
-            )
-            .join("\n");
-
+        const text = queue
+          .map(
+            (track, index) =>
+              `${index + 1}. ${track.songName}`
+          )
+          .join("\n");
 
         await interaction.reply({
           content:
@@ -335,17 +210,8 @@ async function handleMusicButton(interaction) {
         break;
       }
 
-
-      /* ===================================================
-         STOP CONFIRM
-      =================================================== */
-
       case "music_stop_confirm": {
-
-        stopPlayback(
-          guildId
-        );
-
+        stopPlayback(guildId);
 
         await interaction.update({
           content:
@@ -356,18 +222,9 @@ async function handleMusicButton(interaction) {
         break;
       }
 
-
-      /* ===================================================
-         LEAVE
-      =================================================== */
-
       case "music_leave": {
-
         const result =
-          disconnect(
-            guildId
-          );
-
+          disconnect(guildId);
 
         await interaction.reply({
           content: result
@@ -379,15 +236,9 @@ async function handleMusicButton(interaction) {
         break;
       }
 
-
-      /* ===================================================
-         DEFAULT
-      =================================================== */
-
       default:
         return;
     }
-
 
   } catch (error) {
 
@@ -395,7 +246,6 @@ async function handleMusicButton(interaction) {
       "❌ Music button error:",
       error
     );
-
 
     if (
       interaction.replied ||
@@ -412,7 +262,7 @@ async function handleMusicButton(interaction) {
 
       await interaction.reply({
         content:
-          `❌ ${error.message || "Có lỗi xảy ra."`,
+          `❌ ${error.message || "Có lỗi xảy ra."}`,
         ephemeral: true
       });
 
@@ -420,11 +270,6 @@ async function handleMusicButton(interaction) {
   }
 }
 
-
-/* =========================================================
-   EXPORT
-========================================================= */
-
 module.exports = {
   handleMusicButton
-};
+}; 
