@@ -14,7 +14,7 @@ const {
   searchYouTube,
   resolveYouTube,
   isYouTubeUrl
-} = require("./sources/youtube");
+} = require("./youtube");
 
 const {
   playYouTube,
