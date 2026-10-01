@@ -10,7 +10,7 @@
     "@discordjs/voice": "^0.19.0",
     "discord.js": "^14.24.2",
     "dotenv": "^17.2.2",
-    "play-dl": "^1.9.7";
+    "play-dl": "^1.9.7",
     "youtubei.js": "^18.1.0"
   }
 } 
