@@ -3,28 +3,49 @@ const {
   resumePlayback,
   stopPlayback,
   skipTrack,
-  shuffleMusicQueue,
-  changeVolumeBy,
-  leaveVoiceChannel
+  shuffleTracks,
+  getMusicQueue,
+  changeVolume,
+  getMusicPlayerState
 } = require("./musicActions");
 
-async function handleMusicButton(
-  interaction
-) {
-  const id = interaction.customId;
+const {
+  disconnect
+} = require("./musicPlayer");
+
+
+/* =========================================================
+   MUSIC BUTTON HANDLER
+========================================================= */
+
+async function handleMusicButton(interaction) {
+
+  const id =
+    interaction.customId;
+
   const guildId =
     interaction.guildId;
+
 
   if (!guildId) {
     return;
   }
 
+
   try {
+
     switch (id) {
 
+
+      /* ===================================================
+         PAUSE
+      =================================================== */
+
       case "music_pause": {
+
         const result =
           pausePlayback(guildId);
+
 
         await interaction.reply({
           content: result
@@ -36,9 +57,16 @@ async function handleMusicButton(
         break;
       }
 
+
+      /* ===================================================
+         RESUME
+      =================================================== */
+
       case "music_resume": {
+
         const result =
           resumePlayback(guildId);
+
 
         await interaction.reply({
           content: result
@@ -50,9 +78,45 @@ async function handleMusicButton(
         break;
       }
 
+
+      /* ===================================================
+         SKIP
+      =================================================== */
+
       case "music_skip": {
+
+        if (
+          !interaction.guild
+        ) {
+          throw new Error(
+            "Không tìm thấy server."
+          );
+        }
+
+
+        const voiceChannel =
+          interaction.member?.voice?.channel;
+
+
+        if (!voiceChannel) {
+
+          await interaction.reply({
+            content:
+              "❌ Bạn phải ở trong voice channel.",
+            ephemeral: true
+          });
+
+          break;
+        }
+
+
         const track =
-          await skipTrack(interaction);
+          await skipTrack(
+            interaction.client,
+            interaction.guild,
+            voiceChannel
+          );
+
 
         await interaction.reply({
           content: track
@@ -64,8 +128,17 @@ async function handleMusicButton(
         break;
       }
 
+
+      /* ===================================================
+         STOP
+      =================================================== */
+
       case "music_stop": {
-        stopPlayback(guildId);
+
+        stopPlayback(
+          guildId
+        );
+
 
         await interaction.reply({
           content:
@@ -76,8 +149,35 @@ async function handleMusicButton(
         break;
       }
 
+
+      /* ===================================================
+         SHUFFLE
+      =================================================== */
+
       case "music_shuffle": {
-        shuffleMusicQueue(guildId);
+
+        const queue =
+          getMusicQueue(
+            guildId
+          );
+
+
+        if (!queue.length) {
+
+          await interaction.reply({
+            content:
+              "📭 Hàng đợi đang trống.",
+            ephemeral: true
+          });
+
+          break;
+        }
+
+
+        shuffleTracks(
+          guildId
+        );
+
 
         await interaction.reply({
           content:
@@ -88,56 +188,134 @@ async function handleMusicButton(
         break;
       }
 
+
+      /* ===================================================
+         VOLUME DOWN
+      =================================================== */
+
       case "music_vol_down": {
-        const volume =
-          changeVolumeBy(
-            guildId,
-            -10
+
+        const state =
+          getMusicPlayerState(
+            guildId
           );
 
+
+        if (
+          !state ||
+          !state.currentTrack
+        ) {
+
+          await interaction.reply({
+            content:
+              "❌ Không có bài đang phát.",
+            ephemeral: true
+          });
+
+          break;
+        }
+
+
+        /*
+         * Giảm 10%
+         */
+
+        const currentVolume =
+          state.volume ?? 75;
+
+
+        const volume =
+          changeVolume(
+            guildId,
+            currentVolume - 10
+          );
+
+
         await interaction.reply({
-          content: volume === false
-            ? "❌ Không có bài đang phát."
-            : `🔉 Âm lượng: **${Math.round(volume)}%**`,
+          content:
+            `🔉 Âm lượng: **${Math.round(volume)}%**`,
           ephemeral: true
         });
 
         break;
       }
+
+
+      /* ===================================================
+         VOLUME UP
+      =================================================== */
 
       case "music_vol_up": {
-        const volume =
-          changeVolumeBy(
-            guildId,
-            10
+
+        const state =
+          getMusicPlayerState(
+            guildId
           );
 
+
+        if (
+          !state ||
+          !state.currentTrack
+        ) {
+
+          await interaction.reply({
+            content:
+              "❌ Không có bài đang phát.",
+            ephemeral: true
+          });
+
+          break;
+        }
+
+
+        /*
+         * Tăng 10%
+         */
+
+        const currentVolume =
+          state.volume ?? 75;
+
+
+        const volume =
+          changeVolume(
+            guildId,
+            currentVolume + 10
+          );
+
+
         await interaction.reply({
-          content: volume === false
-            ? "❌ Không có bài đang phát."
-            : `🔊 Âm lượng: **${Math.round(volume)}%**`,
+          content:
+            `🔊 Âm lượng: **${Math.round(volume)}%**`,
           ephemeral: true
         });
 
         break;
       }
 
+
+      /* ===================================================
+         QUEUE
+      =================================================== */
+
       case "music_queue": {
-        const {
-          getMusicQueue
-        } = require("./musicActions");
 
         const queue =
-          getMusicQueue(guildId);
+          getMusicQueue(
+            guildId
+          );
+
 
         if (!queue.length) {
+
           await interaction.reply({
             content:
               "📭 Hàng đợi đang trống.",
             ephemeral: true
           });
+
           break;
         }
+
 
         const text =
           queue
@@ -146,6 +324,7 @@ async function handleMusicButton(
                 `${index + 1}. ${track.songName}`
             )
             .join("\n");
+
 
         await interaction.reply({
           content:
@@ -156,8 +335,17 @@ async function handleMusicButton(
         break;
       }
 
+
+      /* ===================================================
+         STOP CONFIRM
+      =================================================== */
+
       case "music_stop_confirm": {
-        stopPlayback(guildId);
+
+        stopPlayback(
+          guildId
+        );
+
 
         await interaction.update({
           content:
@@ -168,21 +356,38 @@ async function handleMusicButton(
         break;
       }
 
+
+      /* ===================================================
+         LEAVE
+      =================================================== */
+
       case "music_leave": {
-        leaveVoiceChannel(guildId);
+
+        const result =
+          disconnect(
+            guildId
+          );
+
 
         await interaction.reply({
-          content:
-            "👋 Bot đã rời phòng thoại.",
+          content: result
+            ? "👋 Bot đã rời phòng thoại."
+            : "❌ Bot hiện không ở trong phòng thoại.",
           ephemeral: true
         });
 
         break;
       }
 
+
+      /* ===================================================
+         DEFAULT
+      =================================================== */
+
       default:
         return;
     }
+
 
   } catch (error) {
 
@@ -191,8 +396,11 @@ async function handleMusicButton(
       error
     );
 
-    if (interaction.replied ||
-        interaction.deferred) {
+
+    if (
+      interaction.replied ||
+      interaction.deferred
+    ) {
 
       await interaction.followUp({
         content:
@@ -204,13 +412,18 @@ async function handleMusicButton(
 
       await interaction.reply({
         content:
-          `❌ ${error.message || "Có lỗi xảy ra."}`,
+          `❌ ${error.message || "Có lỗi xảy ra."`,
         ephemeral: true
       });
 
     }
   }
 }
+
+
+/* =========================================================
+   EXPORT
+========================================================= */
 
 module.exports = {
   handleMusicButton
