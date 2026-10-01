@@ -1,13 +1,12 @@
 const {
-  playYouTube,
-  pause,
-  resume,
-  stop,
-  disconnect,
-  setVolume,
-  adjustVolume,
-  getPlayerState
-} = require("./musicPlayer");
+  joinVoiceChannel,
+  createAudioPlayer,
+  createAudioResource,
+  AudioPlayerStatus,
+  NoSubscriberBehavior
+} = require("@discordjs/voice");
+
+const play = require("play-dl");
 
 const play = require("play-dl");
 
