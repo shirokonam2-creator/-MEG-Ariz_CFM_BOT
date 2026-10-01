@@ -1,4 +1,8 @@
 const {
+  getYouTube
+} = require("./youtubeAuth");
+
+const {
   joinVoiceChannel,
   createAudioPlayer,
   createAudioResource,
