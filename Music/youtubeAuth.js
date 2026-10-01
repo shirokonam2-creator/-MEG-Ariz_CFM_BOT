@@ -2,6 +2,10 @@ const fs = require("fs");
 const path = require("path");
 const { Innertube } = require("youtubei.js");
 
+// ========================================
+// CẤU HÌNH LƯU YOUTUBE OAUTH
+// ========================================
+
 const DATA_DIR = process.env.RAILWAY_ENVIRONMENT
   ? "/data"
   : path.join(__dirname, "data");
@@ -14,19 +18,31 @@ const CREDENTIALS_FILE = path.join(
 let youtube = null;
 let youtubePromise = null;
 
+// ========================================
+// ĐỌC CREDENTIALS ĐÃ LƯU
+// ========================================
+
 function loadCredentials() {
   try {
     if (!fs.existsSync(CREDENTIALS_FILE)) {
       return {};
     }
 
-    const text = fs
+    const content = fs
       .readFileSync(CREDENTIALS_FILE, "utf8")
       .trim();
 
-    if (!text) return {};
+    if (!content) {
+      return {};
+    }
 
-    return JSON.parse(text);
+    const credentials = JSON.parse(content);
+
+    return credentials &&
+      typeof credentials === "object" &&
+      !Array.isArray(credentials)
+      ? credentials
+      : {};
   } catch (error) {
     console.error(
       "❌ Không đọc được YouTube OAuth:",
@@ -37,7 +53,18 @@ function loadCredentials() {
   }
 }
 
+// ========================================
+// LƯU CREDENTIALS
+// ========================================
+
 function saveCredentials(credentials) {
+  if (
+    !credentials ||
+    typeof credentials !== "object"
+  ) {
+    return;
+  }
+
   try {
     fs.mkdirSync(DATA_DIR, {
       recursive: true
@@ -60,6 +87,10 @@ function saveCredentials(credentials) {
   }
 }
 
+// ========================================
+// KHỞI TẠO YOUTUBE
+// ========================================
+
 async function getYouTube() {
   if (youtube) {
     return youtube;
@@ -76,10 +107,6 @@ async function getYouTube() {
       retrieve_player: true
     });
 
-    /*
-     * youtubei.js 18.x dùng session
-     * cho cơ chế xác thực.
-     */
     const session = client.session;
 
     if (!session) {
@@ -88,115 +115,88 @@ async function getYouTube() {
       );
     }
 
-    /*
-     * Đăng ký OAuth events trên session.
-     */
-    if (session.on) {
-      session.on(
-        "auth",
-        data => {
-          if (
-            data.status ===
-            "AUTHORIZATION_PENDING"
-          ) {
-            console.log("");
-            console.log(
-              "════════════════════════════════"
-            );
-            console.log(
-              "🔐 YOUTUBE CẦN XÁC THỰC"
-            );
-            console.log(
-              "🌐 Mở:"
-            );
-            console.log(
-              data.verification_url
-            );
-            console.log("");
-            console.log(
-              "🔢 Mã xác thực:"
-            );
-            console.log(data.code);
-            console.log(
-              "════════════════════════════════"
-            );
-            console.log("");
-          }
+    // ------------------------------------
+    // NHẬN SỰ KIỆN OAUTH
+    // ------------------------------------
 
-          if (
-            data.status === "SUCCESS"
-          ) {
-            console.log(
-              "✅ YouTube OAuth đăng nhập thành công!"
-            );
+    if (typeof session.on === "function") {
+      session.on("auth", data => {
+        if (
+          data?.status ===
+          "AUTHORIZATION_PENDING"
+        ) {
+          console.log("");
+          console.log(
+            "================================"
+          );
+          console.log(
+            "🔐 YOUTUBE CẦN XÁC THỰC"
+          );
+          console.log(
+            "🌐 Mở trang xác minh:"
+          );
+          console.log(data.verification_url);
+          console.log("");
+          console.log(
+            "🔢 Mã xác thực:"
+          );
+          console.log(data.code);
+          console.log(
+            "================================"
+          );
+          console.log("");
+        }
 
-            if (data.credentials) {
-              saveCredentials(
-                data.credentials
-              );
-            }
-          }
+        if (data?.status === "SUCCESS") {
+          console.log(
+            "✅ YouTube OAuth đăng nhập thành công!"
+          );
 
-          if (
-            data.status === "ERROR"
-          ) {
-            console.error(
-              "❌ YouTube OAuth lỗi:",
-              data
-            );
+          if (data.credentials) {
+            saveCredentials(data.credentials);
           }
         }
-      );
+
+        if (data?.status === "ERROR") {
+          console.error(
+            "❌ YouTube OAuth lỗi:",
+            data
+          );
+        }
+      });
 
       session.on(
         "update-credentials",
         data => {
-          if (
-            data?.credentials
-          ) {
-            saveCredentials(
-              data.credentials
-            );
+          if (data?.credentials) {
+            saveCredentials(data.credentials);
           }
         }
       );
     }
 
-    /*
-     * Nếu có credentials cũ,
-     * dùng lại phiên đăng nhập.
-     */
+    // ------------------------------------
+    // ĐĂNG NHẬP HOẶC YÊU CẦU XÁC THỰC
+    // ------------------------------------
+
     try {
-  if (credentials && Object.keys(credentials).length) {
-    await session.signIn(credentials);
-    console.log("✅ YouTube đã đăng nhập bằng credentials.");
-  } else {
-    await session.signIn();
-  }
-} catch (error) {
-  console.error("⚠️ YouTube OAuth:", error.message);
-    }
+      if (
+        credentials &&
+        Object.keys(credentials).length > 0
+      ) {
+        await session.signIn(credentials);
 
         console.log(
-          "✅ Đã sử dụng YouTube credentials đã lưu."
+          "✅ Đã thử đăng nhập bằng credentials đã lưu."
         );
       } else {
-        /*
-         * Không có credentials:
-         * yêu cầu OAuth.
-         */
-        await client.signIn();
+        await session.signIn();
       }
     } catch (error) {
       console.error(
         "⚠️ YouTube OAuth:",
         error.message
       );
-
-      /*
-       * Không làm Discord bot crash
-       * chỉ vì YouTube chưa đăng nhập.
-       */
     }
 
     youtube = client;
@@ -206,10 +206,15 @@ async function getYouTube() {
 
   try {
     return await youtubePromise;
-  } finally {
+  } catch (error) {
     youtubePromise = null;
+    throw error;
   }
 }
+
+// ========================================
+// EXPORT
+// ========================================
 
 module.exports = {
   getYouTube,
