@@ -167,13 +167,15 @@ async function getYouTube() {
      * dùng lại phiên đăng nhập.
      */
     try {
-      if (
-        credentials &&
-        Object.keys(credentials).length
-      ) {
-        await client.signIn(
-          credentials
-        );
+  if (credentials && Object.keys(credentials).length) {
+    await session.signIn(credentials);
+    console.log("✅ YouTube đã đăng nhập bằng credentials.");
+  } else {
+    await session.signIn();
+  }
+} catch (error) {
+  console.error("⚠️ YouTube OAuth:", error.message);
+    }
 
         console.log(
           "✅ Đã sử dụng YouTube credentials đã lưu."
