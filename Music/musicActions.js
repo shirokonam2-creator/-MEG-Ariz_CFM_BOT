@@ -1,144 +1,119 @@
 const {
-  PermissionFlagsBits
-} = require("discord.js");
-
-const {
-  searchYouTubeSong,
-  getSongByUrl,
+  searchYouTube,
+  resolveYouTube,
   isYouTubeUrl
-} = require("./musicSource");
+} = require("./sources/youtube");
 
 const {
   playYouTube,
-  pause,
-  resume,
-  stop,
-  disconnect,
-  setVolume,
-  adjustVolume,
-  getPlayerState
+  pausePlayer,
+  resumePlayer,
+  stopPlayer,
+  getPlayerData,
+  setVolume
 } = require("./musicPlayer");
 
 const {
-  addToQueue,
+  addTrack,
+  getQueue,
   getNextTrack,
-  getQueueTracks,
   clearQueue,
-  removeFromQueue,
-  shuffleQueue,
-  getQueueSize
+  removeTrack,
+  shuffleQueue
 } = require("./musicQueue");
 
-/**
- * Kiểm tra người dùng đang ở voice channel
- */
-function getUserVoiceChannel(interaction) {
-  const channel =
-    interaction.member?.voice?.channel;
+const {
+  getGuildMusicData
+} = require("./playerStore");
 
-  if (!channel) {
-    throw new Error(
-      "Bạn phải vào một phòng thoại trước."
-    );
+
+/* =========================================================
+   TÌM BÀI TRÊN YOUTUBE
+========================================================= */
+
+async function findTrack(query) {
+  const text = String(query || "").trim();
+
+  if (!text) {
+    throw new Error("Bạn chưa nhập tên bài hát.");
   }
 
-  return channel;
-}
-
-/**
- * Tìm bài hát trong nguồn
- */
-function findSong(query) {
-  if (!query || !query.trim()) {
-    return null;
-  }
-
-  const text = query.trim();
-
-  // Nếu nhập URL YouTube
+  // Nếu là URL YouTube
   if (isYouTubeUrl(text)) {
-    return (
-      getSongByUrl(text) || {
-        songName: text,
-        url: text
-      }
-    );
+    return await resolveYouTube(text);
   }
 
-  // Tìm bằng songName
-  return searchYouTubeSong(text);
-}
-
-/**
- * /play
- */
-async function playQuery(
-  client,
-  interaction,
-  query
-) {
-  const guild =
-    interaction.guild;
-
-  if (!guild) {
-    throw new Error(
-      "Lệnh này chỉ sử dụng được trong server."
-    );
-  }
-
-  const voiceChannel =
-    getUserVoiceChannel(interaction);
-
-  if (!query || !query.trim()) {
-    throw new Error(
-      "Vui lòng nhập tên bài hát."
-    );
-  }
-
-  const track =
-    findSong(query);
+  // Nếu là tên bài hát
+  const track = await searchYouTube(text);
 
   if (!track) {
-    throw new Error(
-      `Không tìm thấy bài **${query}** trong youtube.json.`
-    );
+    throw new Error(`Không tìm thấy bài hát: ${text}`);
   }
 
-  const playerState =
-    getPlayerState(guild.id);
+  return track;
+}
 
-  const isPlaying =
-    playerState?.playing ||
-    playerState?.paused;
+
+/* =========================================================
+   PLAY
+========================================================= */
+
+async function playQuery(client, message, query) {
+  if (!message?.guild) {
+    throw new Error("Lệnh này chỉ dùng được trong server.");
+  }
+
+  if (!message.member?.voice?.channel) {
+    throw new Error("Bạn phải vào voice channel trước.");
+  }
+
+  const voiceChannel = message.member.voice.channel;
+
+  // Tìm bài
+  const track = await findTrack(query);
+
+  // Lấy dữ liệu player
+  let musicData = getGuildMusicData(message.guild.id);
 
   /*
-   * Nếu đang có bài phát:
-   * → thêm bài mới vào queue
+   * Nếu đang có bài hát:
+   * -> Không ngắt bài hiện tại
+   * -> Thêm bài mới vào queue
    */
-  if (isPlaying) {
-    addToQueue(
-      guild.id,
+
+  const playerData = getPlayerData(message.guild.id);
+
+  if (
+    playerData &&
+    playerData.currentTrack &&
+    playerData.isPlaying
+  ) {
+    const position = addTrack(
+      message.guild.id,
       track
     );
 
     return {
       type: "queue",
       track,
-      position:
-        getQueueSize(guild.id)
+      position
     };
   }
 
   /*
-   * Nếu chưa phát:
-   * → phát ngay
+   * Không có bài đang phát
+   * -> phát ngay
    */
+
   await playYouTube(
-    guild,
+    message.guild,
     voiceChannel,
     track.url,
     track
   );
+
+  musicData.currentTrack = track;
+  musicData.isPlaying = true;
 
   return {
     type: "playing",
@@ -146,17 +121,20 @@ async function playQuery(
   };
 }
 
-/**
- * Phát bài tiếp theo trong queue
- */
-async function playNext(
-  guild,
-  voiceChannel
-) {
-  const nextTrack =
-    getNextTrack(guild.id);
+
+/* =========================================================
+   PLAY NEXT
+========================================================= */
+
+async function playNext(client, guild, voiceChannel) {
+  const nextTrack = getNextTrack(guild.id);
 
   if (!nextTrack) {
+    const musicData = getGuildMusicData(guild.id);
+
+    musicData.currentTrack = null;
+    musicData.isPlaying = false;
+
     return null;
   }
 
@@ -167,169 +145,171 @@ async function playNext(
     nextTrack
   );
 
+  const musicData = getGuildMusicData(guild.id);
+
+  musicData.currentTrack = nextTrack;
+  musicData.isPlaying = true;
+
   return nextTrack;
 }
 
-/**
- * Pause
- */
-function pausePlayback(
-  guildId
-) {
-  return pause(guildId);
-}
 
-/**
- * Resume
- */
-function resumePlayback(
-  guildId
-) {
-  return resume(guildId);
-}
+/* =========================================================
+   PAUSE
+========================================================= */
 
-/**
- * Stop
- */
-function stopPlayback(
-  guildId
-) {
-  clearQueue(guildId);
+function pausePlayback(guildId) {
+  const result = pausePlayer(guildId);
 
-  return stop(guildId);
-}
-
-/**
- * Rời voice
- */
-function leaveVoiceChannel(
-  guildId
-) {
-  clearQueue(guildId);
-
-  return disconnect(guildId);
-}
-
-/**
- * Skip bài hiện tại
- */
-async function skipTrack(
-  interaction
-) {
-  const guild =
-    interaction.guild;
-
-  if (!guild) {
-    return null;
+  if (!result) {
+    throw new Error("Hiện không có bài hát đang phát.");
   }
 
-  stop(guild.id);
+  const musicData = getGuildMusicData(guildId);
+  musicData.isPlaying = false;
+  musicData.isPaused = true;
 
-  const voiceChannel =
-    interaction.member?.voice?.channel;
+  return true;
+}
 
-  if (!voiceChannel) {
-    return null;
+
+/* =========================================================
+   RESUME
+========================================================= */
+
+function resumePlayback(guildId) {
+  const result = resumePlayer(guildId);
+
+  if (!result) {
+    throw new Error("Không có bài hát đang tạm dừng.");
   }
 
-  return playNext(
+  const musicData = getGuildMusicData(guildId);
+  musicData.isPlaying = true;
+  musicData.isPaused = false;
+
+  return true;
+}
+
+
+/* =========================================================
+   STOP
+========================================================= */
+
+function stopPlayback(guildId) {
+  stopPlayer(guildId);
+  clearQueue(guildId);
+
+  const musicData = getGuildMusicData(guildId);
+
+  musicData.currentTrack = null;
+  musicData.isPlaying = false;
+  musicData.isPaused = false;
+
+  return true;
+}
+
+
+/* =========================================================
+   SKIP
+========================================================= */
+
+async function skipTrack(client, guild, voiceChannel) {
+  stopPlayer(guild.id);
+
+  return await playNext(
+    client,
     guild,
     voiceChannel
   );
 }
 
-/**
- * Shuffle queue
- */
-function shuffleMusicQueue(
-  guildId
-) {
-  return shuffleQueue(
-    guildId
-  );
+
+/* =========================================================
+   SHUFFLE
+========================================================= */
+
+function shuffleTracks(guildId) {
+  shuffleQueue(guildId);
+
+  return getQueue(guildId);
 }
 
-/**
- * Đặt volume
- */
-function changeVolume(
-  guildId,
-  volume
-) {
-  return setVolume(
-    guildId,
-    volume
-  );
+
+/* =========================================================
+   QUEUE
+========================================================= */
+
+function getMusicQueue(guildId) {
+  return getQueue(guildId);
 }
 
-/**
- * Tăng / giảm volume
- */
-function changeVolumeBy(
-  guildId,
-  amount
-) {
-  return adjustVolume(
-    guildId,
-    amount
-  );
-}
 
-/**
- * Lấy queue
- */
-function getMusicQueue(
-  guildId
-) {
-  return getQueueTracks(
-    guildId
-  );
-}
+/* =========================================================
+   REMOVE
+========================================================= */
 
-/**
- * Xóa bài trong queue
- */
-function removeMusicQueue(
-  guildId,
-  index
-) {
-  return removeFromQueue(
+function removeFromQueue(guildId, index) {
+  return removeTrack(
     guildId,
     index
   );
 }
 
-/**
- * Xóa toàn bộ queue
- */
-function clearMusicQueue(
-  guildId
-) {
-  return clearQueue(
-    guildId
-  );
+
+/* =========================================================
+   CLEAR QUEUE
+========================================================= */
+
+function clearMusicQueue(guildId) {
+  clearQueue(guildId);
+
+  return true;
 }
 
-module.exports = {
-  getUserVoiceChannel,
-  findSong,
 
+/* =========================================================
+   VOLUME
+========================================================= */
+
+function changeVolume(guildId, volume) {
+  const value = Math.max(
+    0,
+    Math.min(100, Number(volume))
+  );
+
+  setVolume(
+    guildId,
+    value
+  );
+
+  const musicData = getGuildMusicData(guildId);
+
+  musicData.volume = value;
+
+  return value;
+}
+
+
+/* =========================================================
+   EXPORT
+========================================================= */
+
+module.exports = {
+  findTrack,
   playQuery,
   playNext,
 
   pausePlayback,
   resumePlayback,
   stopPlayback,
-  leaveVoiceChannel,
-
   skipTrack,
 
-  shuffleMusicQueue,
-
-  changeVolume,
-  changeVolumeBy,
+  shuffleTracks,
 
   getMusicQueue,
-  removeMusicQueue,
-  clearMusicQueue
+  removeFromQueue,
+  clearMusicQueue,
+
+  changeVolume
 };
