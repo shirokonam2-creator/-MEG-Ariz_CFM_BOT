@@ -167,15 +167,23 @@ function findTrackIndex(
 module.exports = {
   getQueue,
   addToQueue,
+  addTrack: addToQueue,
+
   getNextTrack,
   peekNextTrack,
   getQueueTracks,
+
   clearQueue,
+
   removeFromQueue,
+  removeTrack: removeFromQueue,
+
   moveInQueue,
   shuffleQueue,
+
   getQueueSize,
   isQueueEmpty,
+
   deleteQueue,
   findTrackIndex
 };
