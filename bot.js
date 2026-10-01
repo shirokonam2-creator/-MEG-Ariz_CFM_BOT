@@ -643,8 +643,7 @@ client.on(
         )
       ) {
         await handleMusicButton(
-          interaction,
-          client
+          interaction
         );
         return;
       }
