@@ -1,99 +1,107 @@
-const fs = require("fs");
-const path = require("path");
+const {
+  searchYouTube,
+  resolveYouTube,
+  isYouTubeUrl
+} = require("./sources/youtube");
 
-const YOUTUBE_FILE = path.join(
-  __dirname,
-  "sources",
-  "youtube.json"
-);
 
-function loadYouTubeSongs() {
-  if (!fs.existsSync(YOUTUBE_FILE)) {
-    return [];
+/**
+ * Tìm bài hát từ nguồn YouTube
+ */
+async function searchSong(query) {
+  const text = String(query || "").trim();
+
+  if (!text) {
+    throw new Error("Bạn chưa nhập tên bài hát.");
   }
 
-  try {
-    const data = fs.readFileSync(
-      YOUTUBE_FILE,
-      "utf8"
-    );
-
-    const songs = JSON.parse(data);
-
-    if (!Array.isArray(songs)) {
-      return [];
-    }
-
-    return songs;
-  } catch (error) {
-    console.error(
-      "❌ Không thể đọc youtube.json:",
-      error.message
-    );
-
-    return [];
-  }
+  return await searchYouTube(text);
 }
 
-function searchYouTubeSong(query) {
-  if (!query || !query.trim()) {
+
+/**
+ * Lấy thông tin từ URL hoặc tên bài hát
+ */
+async function resolveSong(input) {
+  const text = String(input || "").trim();
+
+  if (!text) {
+    throw new Error(
+      "Bạn chưa nhập tên bài hát hoặc URL."
+    );
+  }
+
+  return await resolveYouTube(text);
+}
+
+
+/**
+ * Kiểm tra có phải URL YouTube không
+ */
+function isYouTube(input) {
+  return isYouTubeUrl(input);
+}
+
+
+/**
+ * Chuẩn hóa thông tin bài hát
+ */
+function normalizeTrack(track) {
+  if (!track) {
     return null;
   }
 
-  const songs = loadYouTubeSongs();
-
-  const search = query
-    .trim()
-    .toLowerCase();
-
-  // Tìm chính xác trước
-  const exact = songs.find(song =>
-    String(song.songName || "")
-      .trim()
-      .toLowerCase() === search
-  );
-
-  if (exact) {
-    return exact;
-  }
-
-  // Nếu không chính xác thì tìm một phần tên
-  const partial = songs.find(song =>
-    String(song.songName || "")
-      .toLowerCase()
-      .includes(search)
-  );
-
-  return partial || null;
+  return {
+    source: track.source || "youtube",
+    songName:
+      track.songName ||
+      track.title ||
+      "Không rõ tên bài",
+    url: track.url || null,
+    videoId: track.videoId || null,
+    author:
+      track.author ||
+      "YouTube",
+    thumbnail:
+      track.thumbnail ||
+      null
+  };
 }
 
-function getSongByUrl(url) {
-  if (!url) {
+
+/**
+ * Tìm và chuẩn hóa bài hát
+ */
+async function findSong(query) {
+  const track = await searchSong(query);
+
+  if (!track) {
     return null;
   }
 
-  const songs = loadYouTubeSongs();
-
-  return (
-    songs.find(song =>
-      String(song.url || "").trim() ===
-      String(url).trim()
-    ) || null
-  );
+  return normalizeTrack(track);
 }
 
-function isYouTubeUrl(url) {
-  if (!url) {
-    return false;
+
+/**
+ * Resolve và chuẩn hóa bài hát
+ */
+async function getSong(input) {
+  const track = await resolveSong(input);
+
+  if (!track) {
+    return null;
   }
 
-  return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//i
-    .test(url.trim());
+  return normalizeTrack(track);
 }
+
 
 module.exports = {
-  loadYouTubeSongs,
-  searchYouTubeSong,
-  getSongByUrl,
-  isYouTubeUrl
+  searchSong,
+  resolveSong,
+  isYouTube,
+  normalizeTrack,
+  findSong,
+  getSong
 };
