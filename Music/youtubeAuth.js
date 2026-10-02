@@ -1,21 +1,17 @@
+
 const fs = require("fs");
 const path = require("path");
-const {
-  Innertube,
-  Platform,
-  Types
-} = require("youtubei.js");
+const { Innertube } = require("youtubei.js");
 
-Platform.shim.eval = async (data) => {
-  return new Function(data.output)();
-};
 // ========================================
-// CẤU HÌNH LƯU YOUTUBE OAUTH
+// ĐƯỜNG DẪN LƯU CREDENTIALS
 // ========================================
 
-const DATA_DIR = process.env.RAILWAY_ENVIRONMENT
-  ? "/data"
-  : path.join(__dirname, "data");
+const DATA_DIR =
+  process.env.YOUTUBE_DATA_DIR ||
+  (process.env.RAILWAY_ENVIRONMENT
+    ? "/data"
+    : path.join(__dirname, "data"));
 
 const CREDENTIALS_FILE = path.join(
   DATA_DIR,
@@ -26,7 +22,7 @@ let youtube = null;
 let youtubePromise = null;
 
 // ========================================
-// ĐỌC CREDENTIALS ĐÃ LƯU
+// ĐỌC CREDENTIALS
 // ========================================
 
 function loadCredentials() {
@@ -39,20 +35,22 @@ function loadCredentials() {
       .readFileSync(CREDENTIALS_FILE, "utf8")
       .trim();
 
-    if (!content) {
+    if (!content) return {};
+
+    const data = JSON.parse(content);
+
+    if (
+      !data ||
+      typeof data !== "object" ||
+      Array.isArray(data)
+    ) {
       return {};
     }
 
-    const credentials = JSON.parse(content);
-
-    return credentials &&
-      typeof credentials === "object" &&
-      !Array.isArray(credentials)
-      ? credentials
-      : {};
+    return data;
   } catch (error) {
     console.error(
-      "❌ Không đọc được YouTube OAuth:",
+      "❌ Không đọc được YouTube credentials:",
       error.message
     );
 
@@ -84,18 +82,22 @@ function saveCredentials(credentials) {
     );
 
     console.log(
-      "💾 Đã lưu YouTube OAuth credentials."
+      "💾 Đã lưu YouTube credentials."
     );
   } catch (error) {
     console.error(
-      "❌ Không thể lưu YouTube OAuth:",
+      "❌ Không lưu được credentials:",
       error.message
+    );
+
+    console.error(
+      "⚠️ Hãy kiểm tra thư mục lưu và Railway Volume."
     );
   }
 }
 
 // ========================================
-// KHỞI TẠO YOUTUBE
+// KHỞI TẠO YOUTUBE OAUTH
 // ========================================
 
 async function getYouTube() {
@@ -108,8 +110,6 @@ async function getYouTube() {
   }
 
   youtubePromise = (async () => {
-    const credentials = loadCredentials();
-
     const client = await Innertube.create({
       retrieve_player: true
     });
@@ -123,87 +123,108 @@ async function getYouTube() {
     }
 
     // ------------------------------------
-    // NHẬN SỰ KIỆN OAUTH
+    // HIỂN THỊ MÃ XÁC MINH
     // ------------------------------------
 
-    if (typeof session.on === "function") {
-      session.on("auth", data => {
-        if (
-          data?.status ===
-          "AUTHORIZATION_PENDING"
-        ) {
-          console.log("");
-          console.log(
-            "================================"
-          );
-          console.log(
-            "🔐 YOUTUBE CẦN XÁC THỰC"
-          );
-          console.log(
-            "🌐 Mở trang xác minh:"
-          );
-          console.log(data.verification_url);
-          console.log("");
-          console.log(
-            "🔢 Mã xác thực:"
-          );
-          console.log(data.code);
-          console.log(
-            "================================"
-          );
-          console.log("");
-        }
-
-        if (data?.status === "SUCCESS") {
-          console.log(
-            "✅ YouTube OAuth đăng nhập thành công!"
-          );
-
-          if (data.credentials) {
-            saveCredentials(data.credentials);
-          }
-        }
-
-        if (data?.status === "ERROR") {
-          console.error(
-            "❌ YouTube OAuth lỗi:",
-            data
-          );
-        }
-      });
-
-      session.on(
-        "update-credentials",
-        data => {
-          if (data?.credentials) {
-            saveCredentials(data.credentials);
-          }
-        }
+    session.on("auth-pending", data => {
+      console.log("");
+      console.log(
+        "===================================="
       );
-    }
+      console.log(
+        "🔐 YOUTUBE ĐANG CHỜ XÁC MINH"
+      );
+      console.log(
+        "🌐 Trang xác minh:"
+      );
+      console.log(
+        data.verification_url
+      );
+      console.log(
+        "🔢 MÃ XÁC MINH:"
+      );
+      console.log(
+        data.user_code
+      );
+      console.log(
+        "===================================="
+      );
+      console.log("");
+    });
 
     // ------------------------------------
-    // ĐĂNG NHẬP HOẶC YÊU CẦU XÁC THỰC
+    // ĐĂNG NHẬP THÀNH CÔNG
     // ------------------------------------
 
-    try {
-      if (
-        credentials &&
-        Object.keys(credentials).length > 0
-      ) {
+    session.on("auth", data => {
+      console.log(
+        "✅ YouTube OAuth đã xác thực thành công."
+      );
+
+      if (data?.credentials) {
+        saveCredentials(data.credentials);
+      }
+    });
+
+    // ------------------------------------
+    // LỖI XÁC THỰC
+    // ------------------------------------
+
+    session.on("auth-error", error => {
+      console.error(
+        "❌ YouTube OAuth error:",
+        error?.message || error
+      );
+    });
+
+    // ------------------------------------
+    // CẬP NHẬT CREDENTIALS
+    // ------------------------------------
+
+    session.on(
+      "update-credentials",
+      data => {
+        if (data?.credentials) {
+          saveCredentials(data.credentials);
+        }
+      }
+    );
+
+    // ------------------------------------
+    // ĐĂNG NHẬP
+    // ------------------------------------
+
+    const credentials = loadCredentials();
+
+    if (Object.keys(credentials).length > 0) {
+      try {
+        console.log(
+          "🔑 Đang thử credentials đã lưu..."
+        );
+
         await session.signIn(credentials);
 
         console.log(
-          "✅ Đã thử đăng nhập bằng credentials đã lưu."
+          "✅ Đã đăng nhập bằng credentials đã lưu."
         );
-      } else {
+      } catch (error) {
+        console.error(
+          "⚠️ Credentials cũ không dùng được:",
+          error?.message || error
+        );
+
+        console.log(
+          "🔄 Đang thử yêu cầu xác minh mới..."
+        );
+
         await session.signIn();
       }
-    } catch (error) {
-      console.error(
-        "⚠️ YouTube OAuth:",
-        error.message
+    } else {
+      console.log(
+        "🔐 Đang yêu cầu mã xác minh YouTube..."
       );
+
+      await session.signIn();
     }
 
     youtube = client;
@@ -215,7 +236,18 @@ async function getYouTube() {
     return await youtubePromise;
   } catch (error) {
     youtubePromise = null;
+
+    console.error(
+      "❌ Không khởi tạo được YouTube:",
+      error?.message || error
+    );
+
     throw error;
+  } finally {
+    // Cho phép thử lại nếu khởi tạo thất bại.
+    if (!youtube) {
+      youtubePromise = null;
+    }
   }
 }
 
