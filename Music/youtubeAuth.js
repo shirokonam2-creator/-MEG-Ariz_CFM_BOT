@@ -3,9 +3,12 @@ const path = require("path");
 const {
   Innertube,
   Platform,
-  Utils
+  Types
 } = require("youtubei.js");
 
+Platform.shim.eval = async (data) => {
+  return new Function(data.output)();
+};
 // ========================================
 // CẤU HÌNH LƯU YOUTUBE OAUTH
 // ========================================
