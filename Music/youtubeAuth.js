@@ -1,6 +1,10 @@
 const fs = require("fs");
 const path = require("path");
-const { Innertube } = require("youtubei.js");
+const {
+  Innertube,
+  Platform,
+  Utils
+} = require("youtubei.js");
 
 // ========================================
 // CẤU HÌNH LƯU YOUTUBE OAUTH
