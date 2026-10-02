@@ -115,7 +115,8 @@ async function getYouTube() {
 
   youtubePromise = (async () => {
     const client = await Innertube.create({
-      retrieve_player: true
+      retrieve_player: true,
+      client_type: "TV"
     });
 
     const session = client.session;
