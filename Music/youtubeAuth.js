@@ -1,7 +1,11 @@
 
 const fs = require("fs");
 const path = require("path");
-const { Innertube } = require("youtubei.js");
+const { Innertube, Platform } = require("youtubei.js/web");
+
+Platform.shim.eval = async (data) => {
+  return new Function(data.output)();
+};
 
 // ========================================
 // ĐƯỜNG DẪN LƯU CREDENTIALS
